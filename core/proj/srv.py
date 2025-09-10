@@ -20,8 +20,15 @@ import logging
 log = logging.getLogger(__name__)
 
 
-from urllib.request import Request, urlopen
+from urllib.request import (
+        Request,
+        urlopen,
+        build_opener,
+        HTTPSHandler,
+        HTTPRedirectHandler,
+)
 from urllib.error import URLError, HTTPError
+import ssl
 import json
 
 from ..errors import ReprojError
@@ -45,28 +52,39 @@ class EPSGIO():
                 if key:
                         url += ('&' if '?' in url else '?') + 'key=' + key
                 rq = Request(url, headers={'User-Agent': USER_AGENT})
-                return urlopen(rq, timeout=timeout)
+                context = ssl.create_default_context()
+                opener = build_opener(HTTPSHandler(context=context), HTTPRedirectHandler())
+                return opener.open(rq, timeout=timeout)
 
         @staticmethod
         def ping():
+
                 url = settings.epsgio_url
+
                 try:
                         EPSGIO._open(url, DEFAULT_TIMEOUT)
                         return True
-                except URLError as e:
-                        log.error('Cannot ping {} web service, {}'.format(url, e.reason))
-                        return False
                 except HTTPError as e:
                         log.error('Cannot ping {} web service, http error {}'.format(url, e.code))
                         return False
-                except:
-                        raise
+                except URLError as e:
+                        reason = e.reason
+                        if isinstance(reason, ssl.SSLError):
+                                log.error('Cannot ping {} web service, SSL error {}'.format(url, reason))
+                        else:
+                                log.error('Cannot ping {} web service, {}'.format(url, reason))
+                        return False
+                except ssl.SSLError as e:
+                        log.error('Cannot ping {} web service, SSL error {}'.format(url, e))
+                        return False
 
 
         @staticmethod
         def reprojPt(epsg1, epsg2, x1, y1):
+
                 base = settings.epsgio_url.rstrip('/')
                 url = base + "/trans?x={X}&y={Y}&z={Z}&s_srs={CRS1}&t_srs={CRS2}"
+
 
                 url = url.replace("{X}", str(x1))
                 url = url.replace("{Y}", str(y1))
@@ -84,12 +102,26 @@ class EPSGIO():
                         log.error('Http request fails url:{}, code:{}, error:{}'.format(url, err.code, err.reason))
                         raise
                 except URLError as err:
-                        log.error('Http request fails url:{}, error:{}'.format(url, err.reason))
+                        reason = err.reason
+                        if isinstance(reason, ssl.SSLError):
+                                log.error('Http request fails url:{}, SSL error:{}'.format(url, reason))
+                        else:
+                                log.error('Http request fails url:{}, error:{}'.format(url, reason))
+                        raise
+                except ssl.SSLError as err:
+                        log.error('Http request fails url:{}, SSL error:{}'.format(url, err))
                         raise
 
                 obj = json.loads(response)
 
-                return (float(obj['x']), float(obj['y']))
+                if isinstance(obj, dict):
+                        if 'x' in obj and 'y' in obj:
+                                return (float(obj['x']), float(obj['y']))
+                        results = obj.get('results') or obj.get('points')
+                        if results:
+                                res = results[0]
+                                return (float(res['x']), float(res['y']))
+                raise ReprojError('Unexpected response from epsg.io: {}'.format(obj))
 
         @staticmethod
         def reprojPts(epsg1, epsg2, points):
@@ -98,8 +130,10 @@ class EPSGIO():
                         x, y = points[0]
                         return [EPSGIO.reprojPt(epsg1, epsg2, x, y)]
 
+
                 base = settings.epsgio_url.rstrip('/')
                 urlTemplate = base + "/trans?data={POINTS}&s_srs={CRS1}&t_srs={CRS2}"
+
 
                 urlTemplate = urlTemplate.replace("{CRS1}", str(epsg1))
                 urlTemplate = urlTemplate.replace("{CRS2}", str(epsg2))
@@ -131,33 +165,76 @@ class EPSGIO():
                                 log.error('Http request fails url:{}, code:{}, error:{}'.format(url, err.code, err.reason))
                                 raise
                         except URLError as err:
-                                log.error('Http request fails url:{}, error:{}'.format(url, err.reason))
+                                reason = err.reason
+                                if isinstance(reason, ssl.SSLError):
+                                        log.error('Http request fails url:{}, SSL error:{}'.format(url, reason))
+                                else:
+                                        log.error('Http request fails url:{}, error:{}'.format(url, reason))
+                                raise
+                        except ssl.SSLError as err:
+                                log.error('Http request fails url:{}, SSL error:{}'.format(url, err))
                                 raise
 
                         obj = json.loads(response)
-                        result.extend([(float(p['x']), float(p['y'])) for p in obj])
+                        if isinstance(obj, dict):
+                                data = obj.get('results') or obj.get('points') or []
+                        else:
+                                data = obj
+                        result.extend([(float(p['x']), float(p['y'])) for p in data])
 
                 return result
 
         @staticmethod
         def search(query):
                 query = str(query).replace(' ', '+')
+
                 base = settings.epsgio_url.rstrip('/')
                 url = base + "/?q={QUERY}&format=json"
+
                 url = url.replace("{QUERY}", query)
                 log.debug('Search crs : {}'.format(url))
-                response = EPSGIO._open(url, DEFAULT_TIMEOUT).read().decode('utf8')
+                try:
+                        response = EPSGIO._open(url, DEFAULT_TIMEOUT).read().decode('utf8')
+                except HTTPError as err:
+                        log.error('Http request fails url:{}, code:{}, error:{}'.format(url, err.code, err.reason))
+                        raise
+                except URLError as err:
+                        reason = err.reason
+                        if isinstance(reason, ssl.SSLError):
+                                log.error('Http request fails url:{}, SSL error:{}'.format(url, reason))
+                        else:
+                                log.error('Http request fails url:{}, error:{}'.format(url, reason))
+                        raise
+                except ssl.SSLError as err:
+                        log.error('Http request fails url:{}, SSL error:{}'.format(url, err))
+                        raise
                 obj = json.loads(response)
-                log.debug('Search results : {}'.format([ (r['code'], r['name']) for r in obj['results'] ]))
-                return obj['results']
+                log.debug('Search results : {}'.format([ (r['code'], r['name']) for r in obj.get('results', []) ]))
+                return obj.get('results', [])
 
         @staticmethod
         def getEsriWkt(epsg):
+
                 base = settings.epsgio_url.rstrip('/')
                 url = base + "/{CODE}.esriwkt"
+
                 url = url.replace("{CODE}", str(epsg))
                 log.debug(url)
-                wkt = EPSGIO._open(url, DEFAULT_TIMEOUT).read().decode('utf8')
+                try:
+                        wkt = EPSGIO._open(url, DEFAULT_TIMEOUT).read().decode('utf8')
+                except HTTPError as err:
+                        log.error('Http request fails url:{}, code:{}, error:{}'.format(url, err.code, err.reason))
+                        raise
+                except URLError as err:
+                        reason = err.reason
+                        if isinstance(reason, ssl.SSLError):
+                                log.error('Http request fails url:{}, SSL error:{}'.format(url, reason))
+                        else:
+                                log.error('Http request fails url:{}, error:{}'.format(url, reason))
+                        raise
+                except ssl.SSLError as err:
+                        log.error('Http request fails url:{}, SSL error:{}'.format(url, err))
+                        raise
                 return wkt
 
 
