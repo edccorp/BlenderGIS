@@ -31,6 +31,8 @@ class Settings():
 		self._proj_engine = kwargs['proj_engine']
 		self._img_engine = kwargs['img_engine']
 		self.user_agent = kwargs['user_agent']
+		self.epsg_base_url = kwargs.get('epsg_base_url', 'https://epsg.io')
+		self.maptiler_api_key = kwargs.get('maptiler_api_key', '')
 
 	@property
 	def proj_engine(self):

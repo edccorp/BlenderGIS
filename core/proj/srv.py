@@ -39,8 +39,17 @@ REPROJ_TIMEOUT = 60
 class EPSGIO():
 
 	@staticmethod
+	def _append_key(url):
+		key = settings.maptiler_api_key
+		if key:
+			sep = '&' if '?' in url else '?'
+			url = f"{url}{sep}key={key}"
+		return url
+
+	@staticmethod
 	def ping():
-		url = "http://epsg.io"
+		url = settings.epsg_base_url
+		url = EPSGIO._append_key(url)
 		try:
 			rq = Request(url, headers={'User-Agent': USER_AGENT})
 			urlopen(rq, timeout=DEFAULT_TIMEOUT)
@@ -58,13 +67,14 @@ class EPSGIO():
 	@staticmethod
 	def reprojPt(epsg1, epsg2, x1, y1):
 
-		url = "http://epsg.io/trans?x={X}&y={Y}&z={Z}&s_srs={CRS1}&t_srs={CRS2}"
+		url = f"{settings.epsg_base_url}/trans?x={{X}}&y={{Y}}&z={{Z}}&s_srs={{CRS1}}&t_srs={{CRS2}}"
 
 		url = url.replace("{X}", str(x1))
 		url = url.replace("{Y}", str(y1))
 		url = url.replace("{Z}", '0')
 		url = url.replace("{CRS1}", str(epsg1))
 		url = url.replace("{CRS2}", str(epsg2))
+		url = EPSGIO._append_key(url)
 
 		log.debug(url)
 
@@ -86,7 +96,7 @@ class EPSGIO():
 			x, y = points[0]
 			return [EPSGIO.reprojPt(epsg1, epsg2, x, y)]
 
-		urlTemplate = "http://epsg.io/trans?data={POINTS}&s_srs={CRS1}&t_srs={CRS2}"
+		urlTemplate = f"{settings.epsg_base_url}/trans?data={{POINTS}}&s_srs={{CRS1}}&t_srs={{CRS2}}"
 
 		urlTemplate = urlTemplate.replace("{CRS1}", str(epsg1))
 		urlTemplate = urlTemplate.replace("{CRS2}", str(epsg2))
@@ -110,6 +120,7 @@ class EPSGIO():
 		result = []
 		for part in parts:
 			url = urlTemplate.replace("{POINTS}", part)
+			url = EPSGIO._append_key(url)
 			log.debug(url)
 
 			try:
@@ -127,8 +138,9 @@ class EPSGIO():
 	@staticmethod
 	def search(query):
 		query = str(query).replace(' ', '+')
-		url = "http://epsg.io/?q={QUERY}&format=json"
+		url = f"{settings.epsg_base_url}/?q={{QUERY}}&format=json"
 		url = url.replace("{QUERY}", query)
+		url = EPSGIO._append_key(url)
 		log.debug('Search crs : {}'.format(url))
 		rq = Request(url, headers={'User-Agent': USER_AGENT})
 		response = urlopen(rq, timeout=DEFAULT_TIMEOUT).read().decode('utf8')
@@ -138,8 +150,9 @@ class EPSGIO():
 
 	@staticmethod
 	def getEsriWkt(epsg):
-		url = "http://epsg.io/{CODE}.esriwkt"
+		url = f"{settings.epsg_base_url}/{{CODE}}.esriwkt"
 		url = url.replace("{CODE}", str(epsg))
+		url = EPSGIO._append_key(url)
 		log.debug(url)
 		rq = Request(url, headers={'User-Agent': USER_AGENT})
 		wkt = urlopen(rq, timeout=DEFAULT_TIMEOUT).read().decode('utf8')
@@ -164,6 +177,7 @@ class TWCC():
 		url = url.replace("{Z}", '0')
 		url = url.replace("{CRS1}", str(epsg1))
 		url = url.replace("{CRS2}", str(epsg2))
+		url = EPSGIO._append_key(url)
 
 		rq = Request(url, headers={'User-Agent': USER_AGENT})
 		response = urlopen(rq, timeout=REPROJ_TIMEOUT).read().decode('utf8')

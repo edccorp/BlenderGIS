@@ -223,8 +223,8 @@ class Reproj():
 				if not ( ((crs1.isWM or crs1.isUTM) and crs2.isWGS84) or (crs1.isWGS84 and (crs2.isWM or crs2.isUTM)) ):
 					raise ReprojError('Too limited built in reprojection capabilities')
 			if self.iproj == 'EPSGIO':
-				if not  EPSGIO.ping():
-					raise ReprojError('Cannot access epsg.io service')
+                                if not  EPSGIO.ping():
+                                        raise ReprojError('Cannot access EPSG service at {}'.format(settings.epsg_base_url))
 
 
 		if self.iproj == 'GDAL':

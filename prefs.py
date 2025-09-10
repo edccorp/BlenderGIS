@@ -236,6 +236,26 @@ class BGIS_PREFS(AddonPreferences):
 		#default = 0,
 		items = listDemServer
 		)
+	def updateEpsgBaseUrl(self, context):
+		settings.epsg_base_url = self.epsgBaseUrl
+
+	epsgBaseUrl: StringProperty(
+		name = "",
+		description = "Base URL for EPSG/MapTiler service",
+		default = settings.epsg_base_url,
+		update = updateEpsgBaseUrl
+	)
+
+	def updateMaptilerApiKey(self, context):
+		settings.maptiler_api_key = self.maptilerApiKey
+
+	maptilerApiKey: StringProperty(
+		name = "",
+		description="you need to request a key from maptiler website",
+		default = settings.maptiler_api_key,
+		update = updateMaptilerApiKey
+	)
+
 
 	opentopography_api_key: StringProperty(
 		name = "",
@@ -329,6 +349,13 @@ class BGIS_PREFS(AddonPreferences):
 		row.operator("bgis.edit_dem_server", icon='PREFERENCES')
 		row.operator("bgis.rmv_dem_server", icon='REMOVE')
 		row.operator("bgis.reset_dem_server", icon='PLAY_REVERSE')
+
+		row = box.row()
+		row.label(text="EPSG base URL")
+		box.row().prop(self, "epsgBaseUrl")
+		row = box.row()
+		row.label(text="MapTiler Api Key")
+		box.row().prop(self, "maptilerApiKey")
 
 		row = box.row()
 		row.label(text="Opentopography Api Key")

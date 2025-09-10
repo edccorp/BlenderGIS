@@ -14,7 +14,7 @@ from ..core.lib.shapefile import Reader as shpReader
 
 from ..geoscene import GeoScene, georefManagerLayout
 from ..prefs import PredefCRS
-from ..core import BBOX
+from ..core import BBOX, settings
 from ..core.proj import Reproj
 from ..core.utils import perf_clock
 
@@ -444,9 +444,10 @@ class IMPORTGIS_OT_shapefile(Operator):
 				self.report({'ERROR'}, "Unable to reproject data, check logs for more infos.")
 				return {'CANCELLED'}
 			if rprj.iproj == 'EPSGIO':
-				if shp.numRecords > 100:
-					self.report({'ERROR'}, "Reprojection through online epsg.io engine is limited to 100 features. \nPlease install GDAL or pyproj module.")
-					return {'CANCELLED'}
+                                if shp.numRecords > 100:
+                                        msg = "Reprojection through online EPSG service ({}) is limited to 100 features. \nPlease install GDAL or pyproj module.".format(settings.epsg_base_url)
+                                        self.report({'ERROR'}, msg)
+                                        return {'CANCELLED'}
 
 		#Get bbox
 		bbox = BBOX(shp.bbox)
