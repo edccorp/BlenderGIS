@@ -9,7 +9,7 @@
 #
 #  This program is distributed in the hope that it will be useful,
 #  but WITHOUT ANY WARRANTY; without even the implied warranty of
-#  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+#  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.	 See the
 #  GNU General Public License for more details.
 #
 #  You should have received a copy of the GNU General Public License
@@ -17,12 +17,13 @@
 #  All rights reserved.
 #  ***** GPL LICENSE BLOCK *****
 import logging
-log = logging.getLogger(__name__)
-
-
+import ssl
+from urllib.error import HTTPError, URLError
+from urllib.parse import urlencode
 from urllib.request import Request, urlopen
-from urllib.error import URLError, HTTPError
 import json
+
+log = logging.getLogger(__name__)
 
 from .. import settings
 
@@ -40,44 +41,51 @@ class EPSGIO():
 
 	@staticmethod
 	def ping():
-		url = "http://epsg.io"
+		url = "https://epsg.io"
 		try:
 			rq = Request(url, headers={'User-Agent': USER_AGENT})
 			urlopen(rq, timeout=DEFAULT_TIMEOUT)
 			return True
-		except URLError as e:
-			log.error('Cannot ping {} web service, {}'.format(url, e.reason))
+		except (URLError, ssl.SSLError) as e:
+			log.error('Cannot ping {} web service, {}'.format(url, getattr(e, 'reason', e)))
 			return False
 		except HTTPError as e:
+			# urlopen handles redirects but we still log HTTP errors
 			log.error('Cannot ping {} web service, http error {}'.format(url, e.code))
 			return False
-		except:
+		except Exception:
 			raise
 
 
 	@staticmethod
 	def reprojPt(epsg1, epsg2, x1, y1):
 
-		url = "http://epsg.io/trans?x={X}&y={Y}&z={Z}&s_srs={CRS1}&t_srs={CRS2}"
+		params = {
+			'x': x1,
+			'y': y1,
+			'z': 0,
+			'source': epsg1,
+			'target': epsg2
+		}
 
-		url = url.replace("{X}", str(x1))
-		url = url.replace("{Y}", str(y1))
-		url = url.replace("{Z}", '0')
-		url = url.replace("{CRS1}", str(epsg1))
-		url = url.replace("{CRS2}", str(epsg2))
-
+		url = "https://epsg.io/trans?" + urlencode(params)
 		log.debug(url)
 
 		try:
 			rq = Request(url, headers={'User-Agent': USER_AGENT})
 			response = urlopen(rq, timeout=REPROJ_TIMEOUT).read().decode('utf8')
-		except (URLError, HTTPError) as err:
-			log.error('Http request fails url:{}, code:{}, error:{}'.format(url, err.code, err.reason))
+		except (URLError, HTTPError, ssl.SSLError) as err:
+			reason = getattr(err, 'reason', err)
+			code = getattr(err, 'code', 'n/a')
+			log.error('Http request fails url:{}, code:{}, error:{}'.format(url, code, reason))
 			raise
 
 		obj = json.loads(response)
+		res = obj.get('result') or obj.get('results') or obj
+		if isinstance(res, list):
+			res = res[0]
 
-		return (float(obj['x']), float(obj['y']))
+		return (float(res['x']), float(res['y']))
 
 	@staticmethod
 	def reprojPts(epsg1, epsg2, points):
@@ -86,63 +94,79 @@ class EPSGIO():
 			x, y = points[0]
 			return [EPSGIO.reprojPt(epsg1, epsg2, x, y)]
 
-		urlTemplate = "http://epsg.io/trans?data={POINTS}&s_srs={CRS1}&t_srs={CRS2}"
-
-		urlTemplate = urlTemplate.replace("{CRS1}", str(epsg1))
-		urlTemplate = urlTemplate.replace("{CRS2}", str(epsg2))
-
-		#data = ';'.join([','.join(map(str, p)) for p in points])
+		paramsTemplate = {
+			'source': epsg1,
+			'target': epsg2,
+			'points': None
+		}
 
 		precision = 4
-		data = [','.join( [str(round(v, precision)) for v in p] ) for p in points ]
+		data = [','.join([str(round(v, precision)) for v in p]) for p in points]
 		part, parts = [], []
-		for i,p in enumerate(data):
-			l = sum([len(p) for p in part]) + len(';'*len(part))
-			if l + len(p) < 4000: #limit is 4094
+		for i, p in enumerate(data):
+			l = sum([len(p) for p in part]) + len(';' * len(part))
+			if l + len(p) < 4000:  # limit is 4094
 				part.append(p)
 			else:
 				parts.append(part)
 				part = [p]
-			if i == len(data)-1:
+			if i == len(data) - 1:
 				parts.append(part)
 		parts = [';'.join(part) for part in parts]
 
 		result = []
 		for part in parts:
-			url = urlTemplate.replace("{POINTS}", part)
+			paramsTemplate['points'] = part
+			url = "https://epsg.io/trans?" + urlencode(paramsTemplate)
 			log.debug(url)
 
 			try:
 				rq = Request(url, headers={'User-Agent': USER_AGENT})
 				response = urlopen(rq, timeout=REPROJ_TIMEOUT).read().decode('utf8')
-			except (URLError, HTTPError) as err:
-				log.error('Http request fails url:{}, code:{}, error:{}'.format(url, err.code, err.reason))
+			except (URLError, HTTPError, ssl.SSLError) as err:
+				reason = getattr(err, 'reason', err)
+				code = getattr(err, 'code', 'n/a')
+				log.error('Http request fails url:{}, code:{}, error:{}'.format(url, code, reason))
 				raise
 
 			obj = json.loads(response)
-			result.extend( [(float(p['x']), float(p['y'])) for p in obj] )
+			pts = obj.get('results') or obj.get('result') or obj
+			result.extend([(float(p['x']), float(p['y'])) for p in pts])
 
 		return result
 
 	@staticmethod
 	def search(query):
-		query = str(query).replace(' ', '+')
-		url = "http://epsg.io/?q={QUERY}&format=json"
-		url = url.replace("{QUERY}", query)
+		query = str(query).strip()
+		params = {'query': query, 'format': 'json'}
+		url = "https://epsg.io/?" + urlencode(params)
 		log.debug('Search crs : {}'.format(url))
-		rq = Request(url, headers={'User-Agent': USER_AGENT})
-		response = urlopen(rq, timeout=DEFAULT_TIMEOUT).read().decode('utf8')
+		try:
+			rq = Request(url, headers={'User-Agent': USER_AGENT})
+			response = urlopen(rq, timeout=DEFAULT_TIMEOUT).read().decode('utf8')
+		except (URLError, HTTPError, ssl.SSLError) as err:
+			reason = getattr(err, 'reason', err)
+			code = getattr(err, 'code', 'n/a')
+			log.error('Http request fails url:{}, code:{}, error:{}'.format(url, code, reason))
+			raise
 		obj = json.loads(response)
-		log.debug('Search results : {}'.format([ (r['code'], r['name']) for r in obj['results'] ]))
-		return obj['results']
+		results = obj.get('results') or obj.get('result') or obj.get('data', [])
+		log.debug('Search results : {}'.format([(r.get('code'), r.get('name')) for r in results]))
+		return results
 
 	@staticmethod
 	def getEsriWkt(epsg):
-		url = "http://epsg.io/{CODE}.esriwkt"
+		url = "https://epsg.io/{CODE}.esriwkt"
 		url = url.replace("{CODE}", str(epsg))
 		log.debug(url)
-		rq = Request(url, headers={'User-Agent': USER_AGENT})
-		wkt = urlopen(rq, timeout=DEFAULT_TIMEOUT).read().decode('utf8')
+		try:
+			rq = Request(url, headers={'User-Agent': USER_AGENT})
+			wkt = urlopen(rq, timeout=DEFAULT_TIMEOUT).read().decode('utf8')
+		except (URLError, HTTPError, ssl.SSLError) as err:
+			reason = getattr(err, 'reason', err)
+			code = getattr(err, 'code', 'n/a')
+			log.error('Http request fails url:{}, code:{}, error:{}'.format(url, code, reason))
+			raise
 		return wkt
 
 
