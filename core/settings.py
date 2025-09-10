@@ -31,8 +31,11 @@ class Settings():
                 self._proj_engine = kwargs['proj_engine']
                 self._img_engine = kwargs['img_engine']
                 self.user_agent = kwargs['user_agent']
-                # Optional API key for epsg.io reprojection service
+                # Optional API key for EPSG reprojection service
                 self.epsgio_key = kwargs.get('epsgio_key', '')
+                # Base URLs for external web services
+                self.epsgio_url = kwargs.get('epsgio_url', 'https://epsg.io')
+                self.maptiler_url = kwargs.get('maptiler_url', 'https://api.maptiler.com')
 
         @property
         def proj_engine(self):
@@ -55,6 +58,18 @@ class Settings():
                         raise IOError
                 else:
                         self._img_engine = engine
+
+        def save(self):
+                data = {
+                        'proj_engine': self.proj_engine,
+                        'img_engine': self.img_engine,
+                        'user_agent': self.user_agent,
+                        'epsgio_key': self.epsgio_key,
+                        'epsgio_url': self.epsgio_url,
+                        'maptiler_url': self.maptiler_url,
+                }
+                with open(cfgFile, 'w') as cfg:
+                        json.dump(data, cfg, indent=8)
 
 
 cfgFile = os.path.join(os.path.dirname(__file__), "settings.json")

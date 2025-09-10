@@ -33,8 +33,7 @@ DEFAULT_TIMEOUT = 2
 REPROJ_TIMEOUT = 60
 
 ######################################
-# EPSG.io
-# https://github.com/klokantech/epsg.io
+# EPSG web service
 
 
 class EPSGIO():
@@ -50,7 +49,7 @@ class EPSGIO():
 
         @staticmethod
         def ping():
-                url = "http://epsg.io"
+                url = settings.epsgio_url
                 try:
                         EPSGIO._open(url, DEFAULT_TIMEOUT)
                         return True
@@ -66,8 +65,8 @@ class EPSGIO():
 
         @staticmethod
         def reprojPt(epsg1, epsg2, x1, y1):
-
-                url = "http://epsg.io/trans?x={X}&y={Y}&z={Z}&s_srs={CRS1}&t_srs={CRS2}"
+                base = settings.epsgio_url.rstrip('/')
+                url = base + "/trans?x={X}&y={Y}&z={Z}&s_srs={CRS1}&t_srs={CRS2}"
 
                 url = url.replace("{X}", str(x1))
                 url = url.replace("{Y}", str(y1))
@@ -81,7 +80,7 @@ class EPSGIO():
                         response = EPSGIO._open(url, REPROJ_TIMEOUT).read().decode('utf8')
                 except HTTPError as err:
                         if err.code in (401, 403):
-                                raise ReprojError('epsg.io access denied: {} {}'.format(err.code, err.reason))
+                                raise ReprojError('{} access denied: {} {}'.format(settings.epsgio_url, err.code, err.reason))
                         log.error('Http request fails url:{}, code:{}, error:{}'.format(url, err.code, err.reason))
                         raise
                 except URLError as err:
@@ -99,7 +98,8 @@ class EPSGIO():
                         x, y = points[0]
                         return [EPSGIO.reprojPt(epsg1, epsg2, x, y)]
 
-                urlTemplate = "http://epsg.io/trans?data={POINTS}&s_srs={CRS1}&t_srs={CRS2}"
+                base = settings.epsgio_url.rstrip('/')
+                urlTemplate = base + "/trans?data={POINTS}&s_srs={CRS1}&t_srs={CRS2}"
 
                 urlTemplate = urlTemplate.replace("{CRS1}", str(epsg1))
                 urlTemplate = urlTemplate.replace("{CRS2}", str(epsg2))
@@ -127,7 +127,7 @@ class EPSGIO():
                                 response = EPSGIO._open(url, REPROJ_TIMEOUT).read().decode('utf8')
                         except HTTPError as err:
                                 if err.code in (401, 403):
-                                        raise ReprojError('epsg.io access denied: {} {}'.format(err.code, err.reason))
+                                        raise ReprojError('{} access denied: {} {}'.format(settings.epsgio_url, err.code, err.reason))
                                 log.error('Http request fails url:{}, code:{}, error:{}'.format(url, err.code, err.reason))
                                 raise
                         except URLError as err:
@@ -142,7 +142,8 @@ class EPSGIO():
         @staticmethod
         def search(query):
                 query = str(query).replace(' ', '+')
-                url = "http://epsg.io/?q={QUERY}&format=json"
+                base = settings.epsgio_url.rstrip('/')
+                url = base + "/?q={QUERY}&format=json"
                 url = url.replace("{QUERY}", query)
                 log.debug('Search crs : {}'.format(url))
                 response = EPSGIO._open(url, DEFAULT_TIMEOUT).read().decode('utf8')
@@ -152,7 +153,8 @@ class EPSGIO():
 
         @staticmethod
         def getEsriWkt(epsg):
-                url = "http://epsg.io/{CODE}.esriwkt"
+                base = settings.epsgio_url.rstrip('/')
+                url = base + "/{CODE}.esriwkt"
                 url = url.replace("{CODE}", str(epsg))
                 log.debug(url)
                 wkt = EPSGIO._open(url, DEFAULT_TIMEOUT).read().decode('utf8')

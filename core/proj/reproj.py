@@ -230,7 +230,7 @@ class Reproj():
                                         raise ReprojError('Too limited built in reprojection capabilities')
                         if self.iproj == 'EPSGIO':
                                 if not  EPSGIO.ping():
-                                        raise ReprojError('Cannot access epsg.io service')
+                                        raise ReprojError('Cannot access {} service'.format(settings.epsgio_url))
 
 
                 if self.iproj == 'GDAL':
@@ -246,7 +246,7 @@ class Reproj():
                         if crs1.isEPSG and crs2.isEPSG:
                                 self.crs1, self.crs2 = crs1.code, crs2.code
                         else:
-                                raise ReprojError('EPSG.io support only EPSG code')
+                                raise ReprojError('{} supports only EPSG code'.format(settings.epsgio_url))
 
                 elif self.iproj == 'BUILTIN':
                         if ((crs1.isWM or crs1.isUTM) and crs2.isWGS84) or (crs1.isWGS84 and (crs2.isWM or crs2.isUTM)):
@@ -314,12 +314,12 @@ class Reproj():
 
                 elif self.iproj == 'EPSGIO':
                         if len(pts) > EPSGIO.MAX_POINTS and self._fallback():
-                                log.warning('Switching from epsg.io to local engine due to feature limit')
+                                log.warning('Switching from %s to local engine due to feature limit', settings.epsgio_url)
                                 return self.pts(pts)
                         try:
                                 return EPSGIO.reprojPts(self.crs1, self.crs2, pts)
                         except Exception as e:
-                                log.warning('epsg.io reprojection failed: %s', e)
+                                log.warning('%s reprojection failed: %s', settings.epsgio_url, e)
                                 if self._fallback():
                                         return self.pts(pts)
                                 if isinstance(e, ReprojError):
