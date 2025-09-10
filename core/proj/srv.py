@@ -24,6 +24,7 @@ from urllib.request import Request, urlopen
 from urllib.error import URLError, HTTPError
 import json
 
+from ..errors import ReprojError
 from .. import settings
 
 USER_AGENT = settings.user_agent
@@ -37,113 +38,125 @@ REPROJ_TIMEOUT = 60
 
 
 class EPSGIO():
+        MAX_POINTS = 1000
 
-	@staticmethod
-	def ping():
-		url = "http://epsg.io"
-		try:
-			rq = Request(url, headers={'User-Agent': USER_AGENT})
-			urlopen(rq, timeout=DEFAULT_TIMEOUT)
-			return True
-		except URLError as e:
-			log.error('Cannot ping {} web service, {}'.format(url, e.reason))
-			return False
-		except HTTPError as e:
-			log.error('Cannot ping {} web service, http error {}'.format(url, e.code))
-			return False
-		except:
-			raise
+        @staticmethod
+        def _open(url, timeout):
+                key = getattr(settings, 'epsgio_key', '')
+                if key:
+                        url += ('&' if '?' in url else '?') + 'key=' + key
+                rq = Request(url, headers={'User-Agent': USER_AGENT})
+                return urlopen(rq, timeout=timeout)
+
+        @staticmethod
+        def ping():
+                url = "http://epsg.io"
+                try:
+                        EPSGIO._open(url, DEFAULT_TIMEOUT)
+                        return True
+                except URLError as e:
+                        log.error('Cannot ping {} web service, {}'.format(url, e.reason))
+                        return False
+                except HTTPError as e:
+                        log.error('Cannot ping {} web service, http error {}'.format(url, e.code))
+                        return False
+                except:
+                        raise
 
 
-	@staticmethod
-	def reprojPt(epsg1, epsg2, x1, y1):
+        @staticmethod
+        def reprojPt(epsg1, epsg2, x1, y1):
 
-		url = "http://epsg.io/trans?x={X}&y={Y}&z={Z}&s_srs={CRS1}&t_srs={CRS2}"
+                url = "http://epsg.io/trans?x={X}&y={Y}&z={Z}&s_srs={CRS1}&t_srs={CRS2}"
 
-		url = url.replace("{X}", str(x1))
-		url = url.replace("{Y}", str(y1))
-		url = url.replace("{Z}", '0')
-		url = url.replace("{CRS1}", str(epsg1))
-		url = url.replace("{CRS2}", str(epsg2))
+                url = url.replace("{X}", str(x1))
+                url = url.replace("{Y}", str(y1))
+                url = url.replace("{Z}", '0')
+                url = url.replace("{CRS1}", str(epsg1))
+                url = url.replace("{CRS2}", str(epsg2))
 
-		log.debug(url)
+                log.debug(url)
 
-		try:
-			rq = Request(url, headers={'User-Agent': USER_AGENT})
-			response = urlopen(rq, timeout=REPROJ_TIMEOUT).read().decode('utf8')
-		except (URLError, HTTPError) as err:
-			log.error('Http request fails url:{}, code:{}, error:{}'.format(url, err.code, err.reason))
-			raise
+                try:
+                        response = EPSGIO._open(url, REPROJ_TIMEOUT).read().decode('utf8')
+                except HTTPError as err:
+                        if err.code in (401, 403):
+                                raise ReprojError('epsg.io access denied: {} {}'.format(err.code, err.reason))
+                        log.error('Http request fails url:{}, code:{}, error:{}'.format(url, err.code, err.reason))
+                        raise
+                except URLError as err:
+                        log.error('Http request fails url:{}, error:{}'.format(url, err.reason))
+                        raise
 
-		obj = json.loads(response)
+                obj = json.loads(response)
 
-		return (float(obj['x']), float(obj['y']))
+                return (float(obj['x']), float(obj['y']))
 
-	@staticmethod
-	def reprojPts(epsg1, epsg2, points):
+        @staticmethod
+        def reprojPts(epsg1, epsg2, points):
 
-		if len(points) == 1:
-			x, y = points[0]
-			return [EPSGIO.reprojPt(epsg1, epsg2, x, y)]
+                if len(points) == 1:
+                        x, y = points[0]
+                        return [EPSGIO.reprojPt(epsg1, epsg2, x, y)]
 
-		urlTemplate = "http://epsg.io/trans?data={POINTS}&s_srs={CRS1}&t_srs={CRS2}"
+                urlTemplate = "http://epsg.io/trans?data={POINTS}&s_srs={CRS1}&t_srs={CRS2}"
 
-		urlTemplate = urlTemplate.replace("{CRS1}", str(epsg1))
-		urlTemplate = urlTemplate.replace("{CRS2}", str(epsg2))
+                urlTemplate = urlTemplate.replace("{CRS1}", str(epsg1))
+                urlTemplate = urlTemplate.replace("{CRS2}", str(epsg2))
 
-		#data = ';'.join([','.join(map(str, p)) for p in points])
+                precision = 4
+                data = [','.join([str(round(v, precision)) for v in p]) for p in points]
+                part, parts = [], []
+                for i, p in enumerate(data):
+                        l = sum(len(pt) for pt in part) + len(';' * len(part))
+                        if l + len(p) < 4000 and len(part) < EPSGIO.MAX_POINTS:
+                                part.append(p)
+                        else:
+                                parts.append(part)
+                                part = [p]
+                        if i == len(data) - 1:
+                                parts.append(part)
+                parts = [';'.join(part) for part in parts]
 
-		precision = 4
-		data = [','.join( [str(round(v, precision)) for v in p] ) for p in points ]
-		part, parts = [], []
-		for i,p in enumerate(data):
-			l = sum([len(p) for p in part]) + len(';'*len(part))
-			if l + len(p) < 4000: #limit is 4094
-				part.append(p)
-			else:
-				parts.append(part)
-				part = [p]
-			if i == len(data)-1:
-				parts.append(part)
-		parts = [';'.join(part) for part in parts]
+                result = []
+                for part in parts:
+                        url = urlTemplate.replace("{POINTS}", part)
+                        log.debug(url)
 
-		result = []
-		for part in parts:
-			url = urlTemplate.replace("{POINTS}", part)
-			log.debug(url)
+                        try:
+                                response = EPSGIO._open(url, REPROJ_TIMEOUT).read().decode('utf8')
+                        except HTTPError as err:
+                                if err.code in (401, 403):
+                                        raise ReprojError('epsg.io access denied: {} {}'.format(err.code, err.reason))
+                                log.error('Http request fails url:{}, code:{}, error:{}'.format(url, err.code, err.reason))
+                                raise
+                        except URLError as err:
+                                log.error('Http request fails url:{}, error:{}'.format(url, err.reason))
+                                raise
 
-			try:
-				rq = Request(url, headers={'User-Agent': USER_AGENT})
-				response = urlopen(rq, timeout=REPROJ_TIMEOUT).read().decode('utf8')
-			except (URLError, HTTPError) as err:
-				log.error('Http request fails url:{}, code:{}, error:{}'.format(url, err.code, err.reason))
-				raise
+                        obj = json.loads(response)
+                        result.extend([(float(p['x']), float(p['y'])) for p in obj])
 
-			obj = json.loads(response)
-			result.extend( [(float(p['x']), float(p['y'])) for p in obj] )
+                return result
 
-		return result
+        @staticmethod
+        def search(query):
+                query = str(query).replace(' ', '+')
+                url = "http://epsg.io/?q={QUERY}&format=json"
+                url = url.replace("{QUERY}", query)
+                log.debug('Search crs : {}'.format(url))
+                response = EPSGIO._open(url, DEFAULT_TIMEOUT).read().decode('utf8')
+                obj = json.loads(response)
+                log.debug('Search results : {}'.format([ (r['code'], r['name']) for r in obj['results'] ]))
+                return obj['results']
 
-	@staticmethod
-	def search(query):
-		query = str(query).replace(' ', '+')
-		url = "http://epsg.io/?q={QUERY}&format=json"
-		url = url.replace("{QUERY}", query)
-		log.debug('Search crs : {}'.format(url))
-		rq = Request(url, headers={'User-Agent': USER_AGENT})
-		response = urlopen(rq, timeout=DEFAULT_TIMEOUT).read().decode('utf8')
-		obj = json.loads(response)
-		log.debug('Search results : {}'.format([ (r['code'], r['name']) for r in obj['results'] ]))
-		return obj['results']
-
-	@staticmethod
-	def getEsriWkt(epsg):
-		url = "http://epsg.io/{CODE}.esriwkt"
-		url = url.replace("{CODE}", str(epsg))
-		log.debug(url)
-		rq = Request(url, headers={'User-Agent': USER_AGENT})
-		wkt = urlopen(rq, timeout=DEFAULT_TIMEOUT).read().decode('utf8')
-		return wkt
+        @staticmethod
+        def getEsriWkt(epsg):
+                url = "http://epsg.io/{CODE}.esriwkt"
+                url = url.replace("{CODE}", str(epsg))
+                log.debug(url)
+                wkt = EPSGIO._open(url, DEFAULT_TIMEOUT).read().decode('utf8')
+                return wkt
 
 
 
@@ -154,22 +167,22 @@ class EPSGIO():
 
 class TWCC():
 
-	@staticmethod
-	def reprojPt(epsg1, epsg2, x1, y1):
+        @staticmethod
+        def reprojPt(epsg1, epsg2, x1, y1):
 
-		url = "http://twcc.fr/en/ws/?fmt=json&x={X}&y={Y}&in=EPSG:{CRS1}&out=EPSG:{CRS2}"
+                url = "http://twcc.fr/en/ws/?fmt=json&x={X}&y={Y}&in=EPSG:{CRS1}&out=EPSG:{CRS2}"
 
-		url = url.replace("{X}", str(x1))
-		url = url.replace("{Y}", str(y1))
-		url = url.replace("{Z}", '0')
-		url = url.replace("{CRS1}", str(epsg1))
-		url = url.replace("{CRS2}", str(epsg2))
+                url = url.replace("{X}", str(x1))
+                url = url.replace("{Y}", str(y1))
+                url = url.replace("{Z}", '0')
+                url = url.replace("{CRS1}", str(epsg1))
+                url = url.replace("{CRS2}", str(epsg2))
 
-		rq = Request(url, headers={'User-Agent': USER_AGENT})
-		response = urlopen(rq, timeout=REPROJ_TIMEOUT).read().decode('utf8')
-		obj = json.loads(response)
+                rq = Request(url, headers={'User-Agent': USER_AGENT})
+                response = urlopen(rq, timeout=REPROJ_TIMEOUT).read().decode('utf8')
+                obj = json.loads(response)
 
-		return (float(obj['point']['x']), float(obj['point']['y']))
+                return (float(obj['point']['x']), float(obj['point']['y']))
 
 
 ######################################
