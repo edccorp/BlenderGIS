@@ -17,6 +17,7 @@ from ..prefs import PredefCRS
 from ..core import BBOX
 from ..core.proj import Reproj, EPSGIO
 from ..core.utils import perf_clock
+from ..core import settings
 
 from .utils import adjust3Dview, getBBOX, DropToGround
 
@@ -444,7 +445,7 @@ class IMPORTGIS_OT_shapefile(Operator):
                                 self.report({'ERROR'}, "Unable to reproject data, check logs for more infos.")
                                 return {'CANCELLED'}
                         if rprj.iproj == 'EPSGIO' and shp.numRecords > EPSGIO.MAX_POINTS:
-                                self.report({'WARNING'}, f"Reprojection through epsg.io will be chunked in batches of {EPSGIO.MAX_POINTS} features and may be slow.")
+                                self.report({'WARNING'}, f"Reprojection through {settings.epsgio_url} will be chunked in batches of {EPSGIO.MAX_POINTS} features and may be slow.")
 
                 #Get bbox
                 bbox = BBOX(shp.bbox)

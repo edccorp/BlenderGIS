@@ -115,13 +115,14 @@ class BGIS_PREFS(AddonPreferences):
                 if HAS_PYPROJ:
                         items.append( ('PYPROJ', 'pyProj', 'Force pyProj as reprojection engine') )
                 #if EPSGIO.ping(): #too slow
-                #        items.append( ('EPSGIO', 'epsg.io', '') )
-                items.append( ('EPSGIO', 'epsg.io', 'Force epsg.io as reprojection engine') )
+                #        items.append( ('EPSGIO', settings.epsgio_url, '') )
+                items.append( ('EPSGIO', settings.epsgio_url, f'Force {settings.epsgio_url} as reprojection engine') )
                 items.append( ('BUILTIN', 'Built in', 'Force reprojection through built in Python functions') )
                 return items
 
         def updateProjEngine(self, context):
                 settings.proj_engine = self.projEngine
+                settings.save()
 
         projEngine: EnumProperty(
                 name = "Projection engine",
@@ -132,12 +133,35 @@ class BGIS_PREFS(AddonPreferences):
 
         def updateEpsgioKey(self, context):
                 settings.epsgio_key = self.epsgioKey
+                settings.save()
+
+        def updateEpsgioUrl(self, context):
+                settings.epsgio_url = self.epsgioUrl
+                settings.save()
+
+        def updateMaptilerUrl(self, context):
+                settings.maptiler_url = self.maptilerUrl
+                settings.save()
+
+        epsgioUrl: StringProperty(
+                name = "EPSG base URL",
+                description = "Base URL for EPSG reprojection service",
+                default = settings.epsgio_url,
+                update = updateEpsgioUrl
+                )
 
         epsgioKey: StringProperty(
-                name = "epsg.io API key",
-                description = "Optional API key for epsg.io reprojection service",
-                default = "",
+                name = "EPSG API key",
+                description = f"Optional API key for {settings.epsgio_url} reprojection service",
+                default = settings.epsgio_key,
                 update = updateEpsgioKey
+                )
+
+        maptilerUrl: StringProperty(
+                name = "MapTiler base URL",
+                description = "Base URL for MapTiler web services",
+                default = settings.maptiler_url,
+                update = updateMaptilerUrl
                 )
 
         ################
@@ -155,6 +179,7 @@ class BGIS_PREFS(AddonPreferences):
 
         def updateImgEngine(self, context):
                 settings.img_engine = self.imgEngine
+                settings.save()
 
         imgEngine: EnumProperty(
                 name = "Image processing engine",
@@ -344,8 +369,14 @@ class BGIS_PREFS(AddonPreferences):
                 row.label(text="Opentopography Api Key")
                 box.row().prop(self, "opentopography_api_key")
                 row = box.row()
-                row.label(text="epsg.io API Key")
+                row.label(text="EPSG base URL")
+                box.row().prop(self, "epsgioUrl")
+                row = box.row()
+                row.label(text="EPSG API Key")
                 box.row().prop(self, "epsgioKey")
+                row = box.row()
+                row.label(text="MapTiler base URL")
+                box.row().prop(self, "maptilerUrl")
                 #System
                 box = layout.box()
                 box.label(text='System')
@@ -401,7 +432,7 @@ class BGIS_OT_add_predef_crs(Operator):
 
         def search(self, context):
                 if not EPSGIO.ping():
-                        self.report({'ERROR'}, "Cannot request epsg.io website")
+                        self.report({'ERROR'}, f"Cannot request {settings.epsgio_url} website")
                 else:
                         results = EPSGIO.search(self.query)
                         self.results = json.dumps(results)
