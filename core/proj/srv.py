@@ -19,6 +19,7 @@
 import logging
 log = logging.getLogger(__name__)
 
+from functools import lru_cache
 
 from urllib.request import (
         Request,
@@ -84,6 +85,7 @@ class EPSGIO():
 
 
         @staticmethod
+        @lru_cache(maxsize=1024)
         def reprojPt(epsg1, epsg2, x1, y1):
 
                 base = settings.maptiler_url.rstrip('/')
@@ -124,14 +126,23 @@ class EPSGIO():
 
         @staticmethod
         def reprojPts(epsg1, epsg2, points):
+                pts_key = tuple((float(x), float(y)) for x, y in points)
+                return EPSGIO._reprojPts_cached(epsg1, epsg2, pts_key)
+
+        @staticmethod
+        @lru_cache(maxsize=128)
+        def _reprojPts_cached(epsg1, epsg2, pts_key):
+                points = list(pts_key)
 
                 if len(points) == 1:
                         x, y = points[0]
                         return [EPSGIO.reprojPt(epsg1, epsg2, x, y)]
 
 
+
                 base = settings.maptiler_url.rstrip('/')
                 urlTemplate = f"{base}/coordinates/transform/{epsg1}/{epsg2}.json?points={{POINTS}}"
+
 
                 precision = 4
                 data = [','.join([str(round(v, precision)) for v in p]) for p in points]
@@ -183,6 +194,7 @@ class EPSGIO():
                 return result
 
         @staticmethod
+        @lru_cache(maxsize=256)
         def search(query):
                 query = str(query).replace(' ', '+')
 
@@ -210,6 +222,7 @@ class EPSGIO():
                 return results
 
         @staticmethod
+        @lru_cache(maxsize=256)
         def getEsriWkt(epsg):
 
                 base = settings.maptiler_url.rstrip('/')
@@ -234,6 +247,13 @@ class EPSGIO():
                 obj = json.loads(response)
                 wkt = obj.get('esriwkt') or obj.get('wkt') or ''
                 return wkt
+
+        @staticmethod
+        def clear_cache():
+                EPSGIO.reprojPt.cache_clear()
+                EPSGIO._reprojPts_cached.cache_clear()
+                EPSGIO.search.cache_clear()
+                EPSGIO.getEsriWkt.cache_clear()
 
 
 

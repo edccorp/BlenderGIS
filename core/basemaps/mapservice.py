@@ -9,7 +9,7 @@
 #
 #  This program is distributed in the hope that it will be useful,
 #  but WITHOUT ANY WARRANTY; without even the implied warranty of
-#  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+#  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.	 See the
 #  GNU General Public License for more details.
 #
 #  You should have received a copy of the GNU General Public License
@@ -391,6 +391,9 @@ class MapService():
 		#Init cache dict
 		self.cacheFolder = cacheFolder
 		self.caches = {}
+		# disk tile cache
+		self.tileCacheDir = os.path.join(self.cacheFolder, "tiles")
+		os.makedirs(self.tileCacheDir, exist_ok=True)
 
 		#Fake browser header
 		self.headers = {
@@ -576,6 +579,18 @@ class MapService():
 		Return None if unable to download a valid stream
 		"""
 
+		cache_dir = os.path.join(self.tileCacheDir, self.srckey, laykey, str(zoom))
+		tile_path = os.path.join(cache_dir, f"{col}_{row}.png")
+		if os.path.exists(tile_path):
+			with open(tile_path, "rb") as f:
+				data = f.read()
+			if imghdr.what(None, data) is not None:
+				return data
+			try:
+				os.remove(tile_path)
+			except OSError:
+				pass
+
 		url = self.buildUrl(laykey, col, row, zoom)
 		log.debug(url)
 
@@ -598,6 +613,10 @@ class MapService():
 
 		if data is None:
 			log.debug("Invalid tile data for request {}".format(url))
+		else:
+			os.makedirs(cache_dir, exist_ok=True)
+			with open(tile_path, "wb") as f:
+				f.write(data)
 
 		return data
 
