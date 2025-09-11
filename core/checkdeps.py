@@ -10,9 +10,12 @@ gdal = None
 try:
         from osgeo import gdal as _gdal
         gdal = _gdal
-except Exception:
+except ImportError:
         HAS_GDAL = False
         log.debug('GDAL Python binding unavailable')
+except Exception:
+        HAS_GDAL = False
+        log.error('Unexpected error importing GDAL', exc_info=True)
 else:
         HAS_GDAL = True
         log.debug('GDAL Python binding available')
@@ -35,8 +38,11 @@ def ensure_gdal():
                 gdal = _gdal
                 HAS_GDAL = True
                 return True, "GDAL available"
+        except ImportError:
+                HAS_GDAL = False
         except Exception:
                 HAS_GDAL = False
+                log.error('Unexpected error importing GDAL', exc_info=True)
 
         try:
                 import pip  # noqa: F401
@@ -60,32 +66,42 @@ def ensure_gdal():
                 HAS_GDAL = True
                 log.info("GDAL installed successfully")
                 return True, "GDAL installed"
-        except Exception as e:
+        except ImportError as e:
                 HAS_GDAL = False
                 log.error("GDAL import failed after installation", exc_info=True)
+                return False, str(e)
+        except Exception as e:
+                HAS_GDAL = False
+                log.error("Unexpected error importing GDAL after installation", exc_info=True)
                 return False, str(e)
 
 
 #PyProj
 try:
-	import pyproj
-except:
-	HAS_PYPROJ = False
-	log.debug('PyProj unavailable')
+        import pyproj
+except ImportError:
+        HAS_PYPROJ = False
+        log.debug('PyProj unavailable')
+except Exception:
+        HAS_PYPROJ = False
+        log.error('Unexpected error importing PyProj', exc_info=True)
 else:
-	HAS_PYPROJ = True
-	log.debug('PyProj available')
+        HAS_PYPROJ = True
+        log.debug('PyProj available')
 
 
 #PIL/Pillow
 try:
-	from PIL import Image
-except:
-	HAS_PIL = False
-	log.debug('Pillow unavailable')
+        from PIL import Image
+except ImportError:
+        HAS_PIL = False
+        log.debug('Pillow unavailable')
+except Exception:
+        HAS_PIL = False
+        log.error('Unexpected error importing Pillow', exc_info=True)
 else:
-	HAS_PIL = True
-	log.debug('Pillow available')
+        HAS_PIL = True
+        log.debug('Pillow available')
 
 
 #Imageio freeimage plugin
