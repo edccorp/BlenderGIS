@@ -83,346 +83,333 @@ class BGIS_OT_pref_show(Operator):
 		return {'FINISHED'}
 
 
-class BGIS_OT_install_gdal(Operator):
+class BGIS_OT_install_deps(Operator):
 
-	bl_idname = "bgis.install_gdal"
-	bl_label = "Install GDAL"
-	bl_description = "Install GDAL Python bindings"
-	bl_options = {'INTERNAL'}
+        bl_idname = "bgis.install_deps"
+        bl_label = "Install missing libraries"
+        bl_description = "Install required Python libraries"
+        bl_options = {'INTERNAL'}
 
-	def execute(self, context):
-		success, msg = checkdeps.ensure_gdal()
-		if success:
-			self.report({'INFO'}, "GDAL installation successful")
-		else:
-			self.report({'ERROR'}, f"GDAL installation failed: {msg}")
-		context.area.tag_redraw()
-		return {'FINISHED'}
+        def execute(self, context):
+                results = checkdeps.ensure_dependencies()
+                failed = [name for name, (ok, _msg) in results.items() if not ok]
+                if failed:
+                        self.report({'ERROR'}, "Failed to install: " + ", ".join(failed))
+                else:
+                        self.report({'INFO'}, "All libraries installed")
+                context.area.tag_redraw()
+                return {'FINISHED'}
 
-
-class BGIS_OT_clear_cache(Operator):
-
-	bl_idname = "bgis.clear_cache"
-	bl_label = "Clear Tile Cache"
-	bl_description = "Remove cached basemap tiles and reset reprojection cache"
-	bl_options = {'INTERNAL'}
-
-	def execute(self, context):
-		prefs = context.preferences.addons[PKG].preferences
-		cache_dir = os.path.join(prefs.cacheFolder, 'tiles')
-		if os.path.isdir(cache_dir):
-			shutil.rmtree(cache_dir)
-		EPSGIO.clear_cache()
-		self.report({'INFO'}, "Cache cleared")
-		return {'FINISHED'}
 
 
 class BGIS_PREFS(AddonPreferences):
 
-	bl_idname = PKG
 
-	################
-	#Predefined Spatial Ref. Systems
+        bl_idname = PKG
 
-	def listPredefCRS(self, context):
-		return [tuple(elem) for elem in json.loads(self.predefCrsJson)]
+        ################
+        #Predefined Spatial Ref. Systems
 
-	#store crs preset as json string into addon preferences
-	predefCrsJson: StringProperty(default=json.dumps(DEFAULT_CRS))
+        def listPredefCRS(self, context):
+                return [tuple(elem) for elem in json.loads(self.predefCrsJson)]
 
-	predefCrs: EnumProperty(
-		name = "Predefinate CRS",
-		description = "Choose predefinite Coordinate Reference System",
-		#default = 1, #possible only since Blender 2.90
-		items = listPredefCRS
-		)
+        #store crs preset as json string into addon preferences
+        predefCrsJson: StringProperty(default=json.dumps(DEFAULT_CRS))
 
-	################
-	#proj engine
+        predefCrs: EnumProperty(
+                name = "Predefinate CRS",
+                description = "Choose predefinite Coordinate Reference System",
+                #default = 1, #possible only since Blender 2.90
+                items = listPredefCRS
+                )
 
-	def getProjEngineItems(self, context):
-		items = [ ('AUTO', 'Auto detect', 'Auto select the best library for reprojection tasks') ]
-		if checkdeps.HAS_GDAL:
-			items.append( ('GDAL', 'GDAL', 'Force GDAL as reprojection engine') )
-		if checkdeps.HAS_PYPROJ:
-			items.append( ('PYPROJ', 'pyProj', 'Force pyProj as reprojection engine') )
-		#if EPSGIO.ping(): #too slow
-		#	 items.append( ('EPSGIO', settings.epsgio_url, '') )
-		items.append( ('EPSGIO', settings.epsgio_url, f'Force {settings.epsgio_url} as reprojection engine') )
-		items.append( ('BUILTIN', 'Built in', 'Force reprojection through built in Python functions') )
-		return items
+        ################
+        #proj engine
 
-	def updateProjEngine(self, context):
-		settings.proj_engine = self.projEngine
-		settings.save()
+        def getProjEngineItems(self, context):
+                items = [ ('AUTO', 'Auto detect', 'Auto select the best library for reprojection tasks') ]
+                if checkdeps.HAS_GDAL:
+                        items.append( ('GDAL', 'GDAL', 'Force GDAL as reprojection engine') )
+                if checkdeps.HAS_PYPROJ:
+                        items.append( ('PYPROJ', 'pyProj', 'Force pyProj as reprojection engine') )
+                #if EPSGIO.ping(): #too slow
+                #        items.append( ('EPSGIO', settings.epsgio_url, '') )
+                items.append( ('EPSGIO', settings.epsgio_url, f'Force {settings.epsgio_url} as reprojection engine') )
+                items.append( ('BUILTIN', 'Built in', 'Force reprojection through built in Python functions') )
+                return items
 
-	projEngine: EnumProperty(
-		name = "Projection engine",
-		description = "Select projection engine",
-		items = getProjEngineItems,
-		update = updateProjEngine
-		)
+        def updateProjEngine(self, context):
+                settings.proj_engine = self.projEngine
+                settings.save()
 
-	def updateEpsgioKey(self, context):
-		settings.epsgio_key = self.epsgioKey
-		settings.save()
+        projEngine: EnumProperty(
+                name = "Projection engine",
+                description = "Select projection engine",
+                items = getProjEngineItems,
+                update = updateProjEngine
+                )
 
-	def updateEpsgioUrl(self, context):
-		settings.epsgio_url = self.epsgioUrl
-		settings.save()
+        def updateEpsgioKey(self, context):
+                settings.epsgio_key = self.epsgioKey
+                settings.save()
 
-	def updateMaptilerUrl(self, context):
-		settings.maptiler_url = self.maptilerUrl
-		settings.save()
+        def updateEpsgioUrl(self, context):
+                settings.epsgio_url = self.epsgioUrl
+                settings.save()
 
-	epsgioUrl: StringProperty(
-		name = "EPSG base URL",
-		description = "Base URL for EPSG reprojection service",
-		default = settings.epsgio_url,
-		update = updateEpsgioUrl
-		)
+        def updateMaptilerUrl(self, context):
+                settings.maptiler_url = self.maptilerUrl
+                settings.save()
 
-	epsgioKey: StringProperty(
-		name = "EPSG API key",
-		description = f"Optional API key for {settings.epsgio_url} reprojection service",
-		default = settings.epsgio_key,
-		update = updateEpsgioKey
-		)
+        epsgioUrl: StringProperty(
+                name = "EPSG base URL",
+                description = "Base URL for EPSG reprojection service",
+                default = settings.epsgio_url,
+                update = updateEpsgioUrl
+                )
 
-	maptilerUrl: StringProperty(
-		name = "MapTiler base URL",
-		description = "Base URL for MapTiler web services",
-		default = settings.maptiler_url,
-		update = updateMaptilerUrl
-		)
+        epsgioKey: StringProperty(
+                name = "EPSG API key",
+                description = f"Optional API key for {settings.epsgio_url} reprojection service",
+                default = settings.epsgio_key,
+                update = updateEpsgioKey
+                )
 
-	################
-	#img engine
+        maptilerUrl: StringProperty(
+                name = "MapTiler base URL",
+                description = "Base URL for MapTiler web services",
+                default = settings.maptiler_url,
+                update = updateMaptilerUrl
+                )
 
-	def getImgEngineItems(self, context):
-		items = [ ('AUTO', 'Auto detect', 'Auto select the best imaging library') ]
-		if checkdeps.HAS_GDAL:
-			items.append( ('GDAL', 'GDAL', 'Force GDAL as image processing engine') )
-		if checkdeps.HAS_IMGIO:
-			items.append( ('IMGIO', 'ImageIO', 'Force ImageIO as image processing  engine') )
-		if checkdeps.HAS_PIL:
-			items.append( ('PIL', 'PIL', 'Force PIL as image processing  engine') )
-		return items
+        ################
+        #img engine
 
-	def updateImgEngine(self, context):
-		settings.img_engine = self.imgEngine
-		settings.save()
+        def getImgEngineItems(self, context):
+                items = [ ('AUTO', 'Auto detect', 'Auto select the best imaging library') ]
+                if checkdeps.HAS_GDAL:
+                        items.append( ('GDAL', 'GDAL', 'Force GDAL as image processing engine') )
+                if checkdeps.HAS_IMGIO:
+                        items.append( ('IMGIO', 'ImageIO', 'Force ImageIO as image processing  engine') )
+                if checkdeps.HAS_PIL:
+                        items.append( ('PIL', 'PIL', 'Force PIL as image processing  engine') )
+                return items
 
-	imgEngine: EnumProperty(
-		name = "Image processing engine",
-		description = "Select image processing engine",
-		items = getImgEngineItems,
-		update = updateImgEngine
-		)
+        def updateImgEngine(self, context):
+                settings.img_engine = self.imgEngine
+                settings.save()
 
-	################
-	#OSM
+        imgEngine: EnumProperty(
+                name = "Image processing engine",
+                description = "Select image processing engine",
+                items = getImgEngineItems,
+                update = updateImgEngine
+                )
 
-	osmTagsJson: StringProperty(default=json.dumps(DEFAULT_OSM_TAGS)) #just a serialized list of tags
+        ################
+        #OSM
 
-	def listOsmTags(self, context):
-		prefs = context.preferences.addons[PKG].preferences
-		tags = json.loads(prefs.osmTagsJson)
-		#put each item in a tuple (key, label, tooltip)
-		return [ (tag, tag, tag) for tag in tags]
+        osmTagsJson: StringProperty(default=json.dumps(DEFAULT_OSM_TAGS)) #just a serialized list of tags
 
-	osmTags: EnumProperty(
-		name = "OSM tags",
-		description = "List of registered OSM tags",
-		items = listOsmTags
-		)
+        def listOsmTags(self, context):
+                prefs = context.preferences.addons[PKG].preferences
+                tags = json.loads(prefs.osmTagsJson)
+                #put each item in a tuple (key, label, tooltip)
+                return [ (tag, tag, tag) for tag in tags]
 
-	################
-	#Basemaps
+        osmTags: EnumProperty(
+                name = "OSM tags",
+                description = "List of registered OSM tags",
+                items = listOsmTags
+                )
 
-	def getCacheFolder(self):
-		return bpy.path.abspath(self.get("cacheFolder", ''))
+        ################
+        #Basemaps
 
-	def setCacheFolder(self, value):
-		if os.access(value, os.X_OK | os.W_OK):
-			self["cacheFolder"] = value
-		else:
-			log.error("The selected cache folder has no write access")
-			self["cacheFolder"] = "The selected folder has no write access"
+        def getCacheFolder(self):
+                return bpy.path.abspath(self.get("cacheFolder", ''))
 
-	cacheFolder: StringProperty(
-		name = "Cache folder",
-		default = APP_DATA, #Does not works !?
-		description = "Define a folder where to store Geopackage SQlite db",
-		subtype = 'DIR_PATH',
-		get = getCacheFolder,
-		set = setCacheFolder
-		)
+        def setCacheFolder(self, value):
+                if os.access(value, os.X_OK | os.W_OK):
+                        self["cacheFolder"] = value
+                else:
+                        log.error("The selected cache folder has no write access")
+                        self["cacheFolder"] = "The selected folder has no write access"
 
-	synchOrj: BoolProperty(
-		name="Synch. lat/long",
-		description='Keep geo origin synchronized with crs origin. Can be slow with remote reprojection services',
-		default=True)
+        cacheFolder: StringProperty(
+                name = "Cache folder",
+                default = APP_DATA, #Does not works !?
+                description = "Define a folder where to store Geopackage SQlite db",
+                subtype = 'DIR_PATH',
+                get = getCacheFolder,
+                set = setCacheFolder
+                )
 
-	zoomToMouse: BoolProperty(name="Zoom to mouse", description='Zoom towards the mouse pointer position', default=True)
+        synchOrj: BoolProperty(
+                name="Synch. lat/long",
+                description='Keep geo origin synchronized with crs origin. Can be slow with remote reprojection services',
+                default=True)
 
-	lockOrigin: BoolProperty(name="Lock origin", description='Do not move scene origin when panning map', default=False)
-	lockObj: BoolProperty(name="Lock objects", description='Retain objects geolocation when moving map origin', default=True)
+        zoomToMouse: BoolProperty(name="Zoom to mouse", description='Zoom towards the mouse pointer position', default=True)
 
-	resamplAlg: EnumProperty(
-		name = "Resampling method",
-		description = "Choose GDAL's resampling method used for reprojection",
-		items = [ ('NN', 'Nearest Neighboor', ''), ('BL', 'Bilinear', ''), ('CB', 'Cubic', ''), ('CBS', 'Cubic Spline', ''), ('LCZ', 'Lanczos', '') ]
-		)
+        lockOrigin: BoolProperty(name="Lock origin", description='Do not move scene origin when panning map', default=False)
+        lockObj: BoolProperty(name="Lock objects", description='Retain objects geolocation when moving map origin', default=True)
 
-	################
-	#Network
+        resamplAlg: EnumProperty(
+                name = "Resampling method",
+                description = "Choose GDAL's resampling method used for reprojection",
+                items = [ ('NN', 'Nearest Neighboor', ''), ('BL', 'Bilinear', ''), ('CB', 'Cubic', ''), ('CBS', 'Cubic Spline', ''), ('LCZ', 'Lanczos', '') ]
+                )
 
-	def listOverpassServer(self, context):
-		return [tuple(entry) for entry in json.loads(self.overpassServerJson)]
+        ################
+        #Network
 
-	#store crs preset as json string into addon preferences
-	overpassServerJson: StringProperty(default=json.dumps(DEFAULT_OVERPASS_SERVER))
+        def listOverpassServer(self, context):
+                return [tuple(entry) for entry in json.loads(self.overpassServerJson)]
 
-	overpassServer: EnumProperty(
-		name = "Overpass server",
-		description = "Select an overpass server",
-		#default = 0,
-		items = listOverpassServer
-		)
+        #store crs preset as json string into addon preferences
+        overpassServerJson: StringProperty(default=json.dumps(DEFAULT_OVERPASS_SERVER))
 
-	def listDemServer(self, context):
-		return [tuple(entry) for entry in json.loads(self.demServerJson)]
+        overpassServer: EnumProperty(
+                name = "Overpass server",
+                description = "Select an overpass server",
+                #default = 0,
+                items = listOverpassServer
+                )
 
-	#store crs preset as json string into addon preferences
-	demServerJson: StringProperty(default=json.dumps(DEFAULT_DEM_SERVER))
+        def listDemServer(self, context):
+                return [tuple(entry) for entry in json.loads(self.demServerJson)]
 
-	demServer: EnumProperty(
-		name = "Elevation server",
-		description = "Select a server that provides Digital Elevation Model datasource",
-		#default = 0,
-		items = listDemServer
-		)
+        #store crs preset as json string into addon preferences
+        demServerJson: StringProperty(default=json.dumps(DEFAULT_DEM_SERVER))
 
-	opentopography_api_key: StringProperty(
-		name = "",
-		description="you need to register and request a key from opentopography website"
-	)
+        demServer: EnumProperty(
+                name = "Elevation server",
+                description = "Select a server that provides Digital Elevation Model datasource",
+                #default = 0,
+                items = listDemServer
+                )
+
+        opentopography_api_key: StringProperty(
+                name = "",
+                description="you need to register and request a key from opentopography website"
+        )
 
 
-	################
-	#IO options
-	mergeDoubles: BoolProperty(
-		name = "Merge duplicate vertices",
-		description = 'Merge shared vertices between features when importing vector data',
-		default = False)
-	adjust3Dview: BoolProperty(
-		name = "Adjust 3D view",
-		description = "Update 3d view grid size and clip distances according to the new imported object's size",
-		default = True)
-	forceTexturedSolid: BoolProperty(
-		name = "Force textured solid shading",
-		description = "Update shading mode to display raster's texture",
-		default = True)
+        ################
+        #IO options
+        mergeDoubles: BoolProperty(
+                name = "Merge duplicate vertices",
+                description = 'Merge shared vertices between features when importing vector data',
+                default = False)
+        adjust3Dview: BoolProperty(
+                name = "Adjust 3D view",
+                description = "Update 3d view grid size and clip distances according to the new imported object's size",
+                default = True)
+        forceTexturedSolid: BoolProperty(
+                name = "Force textured solid shading",
+                description = "Update shading mode to display raster's texture",
+                default = True)
 
-	################
-	#System
-	def updateLogLevel(self, context):
-		logger = logging.getLogger(PKG)
-		logger.setLevel(logging.getLevelName(self.logLevel))
+        ################
+        #System
+        def updateLogLevel(self, context):
+                logger = logging.getLogger(PKG)
+                logger.setLevel(logging.getLevelName(self.logLevel))
 
-	logLevel: EnumProperty(
-		name = "Logging level",
-		description = "Select the logging level",
-		items = [('DEBUG', 'Debug', ''), ('INFO', 'Info', ''), ('WARNING', 'Warning', ''), ('ERROR', 'Error', ''), ('CRITICAL', 'Critical', '')],
-		update = updateLogLevel,
-		default = 'DEBUG'
-		)
+        logLevel: EnumProperty(
+                name = "Logging level",
+                description = "Select the logging level",
+                items = [('DEBUG', 'Debug', ''), ('INFO', 'Info', ''), ('WARNING', 'Warning', ''), ('ERROR', 'Error', ''), ('CRITICAL', 'Critical', '')],
+                update = updateLogLevel,
+                default = 'DEBUG'
+                )
 
-	################
-	def draw(self, context):
-		layout = self.layout
-		#Dependencies
-		box = layout.box()
-		box.label(text='Dependencies')
-		row = box.row()
-		row.operator("bgis.install_gdal", text="Install GDAL")
-		icon = 'CHECKMARK' if checkdeps.HAS_GDAL else 'ERROR'
-		row.label(text=("GDAL installed" if checkdeps.HAS_GDAL else "GDAL missing"), icon=icon)
+        ################
+        def draw(self, context):
+                layout = self.layout
+                #Dependencies
+                box = layout.box()
+                box.label(text='Dependencies')
+                row = box.row()
+                row.operator("bgis.install_deps", text="Install missing libraries")
+                for name, flag in [("GDAL", checkdeps.HAS_GDAL), ("pyproj", checkdeps.HAS_PYPROJ), ("Pillow", checkdeps.HAS_PIL)]:
+                        icon = 'CHECKMARK' if flag else 'ERROR'
+                        box.label(text=(f"{name} installed" if flag else f"{name} missing"), icon=icon)
 
-		#SRS
-		box = layout.box()
-		box.label(text='Spatial Reference Systems')
-		row = box.row().split(factor=0.5)
-		row.prop(self, "predefCrs", text='')
-		row.operator("bgis.add_predef_crs", icon='ADD')
-		row.operator("bgis.edit_predef_crs", icon='PREFERENCES')
-		row.operator("bgis.rmv_predef_crs", icon='REMOVE')
-		row.operator("bgis.reset_predef_crs", icon='PLAY_REVERSE')
+                #SRS
+                box = layout.box()
+                box.label(text='Spatial Reference Systems')
+                row = box.row().split(factor=0.5)
+                row.prop(self, "predefCrs", text='')
+                row.operator("bgis.add_predef_crs", icon='ADD')
+                row.operator("bgis.edit_predef_crs", icon='PREFERENCES')
+                row.operator("bgis.rmv_predef_crs", icon='REMOVE')
+                row.operator("bgis.reset_predef_crs", icon='PLAY_REVERSE')
 
-		#Basemaps
-		box = layout.box()
-		box.label(text='Basemaps')
-		box.prop(self, "cacheFolder")
-		box.operator("bgis.clear_cache", icon='TRASH')
-		row = box.row()
-		row.prop(self, "zoomToMouse")
-		row.prop(self, "lockObj")
-		row.prop(self, "lockOrigin")
-		row.prop(self, "synchOrj")
-		row = box.row()
-		row.prop(self, "resamplAlg")
+                #Basemaps
+                box = layout.box()
+                box.label(text='Basemaps')
+                box.prop(self, "cacheFolder")
+                row = box.row()
+                row.prop(self, "zoomToMouse")
+                row.prop(self, "lockObj")
+                row.prop(self, "lockOrigin")
+                row.prop(self, "synchOrj")
+                row = box.row()
+                row.prop(self, "resamplAlg")
 
-		#IO
-		box = layout.box()
-		box.label(text='Import/Export')
-		row = box.row().split(factor=0.5)
-		split = row.split(factor=0.9, align=True)
-		split.prop(self, "osmTags")
-		split.operator("wm.url_open", icon='INFO').url = "http://wiki.openstreetmap.org/wiki/Map_Features"
-		row.operator("bgis.add_osm_tag", icon='ADD')
-		row.operator("bgis.edit_osm_tag", icon='PREFERENCES')
-		row.operator("bgis.rmv_osm_tag", icon='REMOVE')
-		row.operator("bgis.reset_osm_tags", icon='PLAY_REVERSE')
-		row = box.row()
-		row.prop(self, "mergeDoubles")
-		row.prop(self, "adjust3Dview")
-		row.prop(self, "forceTexturedSolid")
+                #IO
+                box = layout.box()
+                box.label(text='Import/Export')
+                row = box.row().split(factor=0.5)
+                split = row.split(factor=0.9, align=True)
+                split.prop(self, "osmTags")
+                split.operator("wm.url_open", icon='INFO').url = "http://wiki.openstreetmap.org/wiki/Map_Features"
+                row.operator("bgis.add_osm_tag", icon='ADD')
+                row.operator("bgis.edit_osm_tag", icon='PREFERENCES')
+                row.operator("bgis.rmv_osm_tag", icon='REMOVE')
+                row.operator("bgis.reset_osm_tags", icon='PLAY_REVERSE')
+                row = box.row()
+                row.prop(self, "mergeDoubles")
+                row.prop(self, "adjust3Dview")
+                row.prop(self, "forceTexturedSolid")
 
-		#Network
-		box = layout.box()
-		box.label(text='Remote datasource')
-		row = box.row().split(factor=0.5)
-		row.prop(self, "overpassServer")
-		row.operator("bgis.add_overpass_server", icon='ADD')
-		row.operator("bgis.edit_overpass_server", icon='PREFERENCES')
-		row.operator("bgis.rmv_overpass_server", icon='REMOVE')
-		row.operator("bgis.reset_overpass_server", icon='PLAY_REVERSE')
-		row = box.row().split(factor=0.5)
-		row.prop(self, "demServer")
-		row.operator("bgis.add_dem_server", icon='ADD')
-		row.operator("bgis.edit_dem_server", icon='PREFERENCES')
-		row.operator("bgis.rmv_dem_server", icon='REMOVE')
-		row.operator("bgis.reset_dem_server", icon='PLAY_REVERSE')
+                #Network
+                box = layout.box()
+                box.label(text='Remote datasource')
+                row = box.row().split(factor=0.5)
+                row.prop(self, "overpassServer")
+                row.operator("bgis.add_overpass_server", icon='ADD')
+                row.operator("bgis.edit_overpass_server", icon='PREFERENCES')
+                row.operator("bgis.rmv_overpass_server", icon='REMOVE')
+                row.operator("bgis.reset_overpass_server", icon='PLAY_REVERSE')
+                row = box.row().split(factor=0.5)
+                row.prop(self, "demServer")
+                row.operator("bgis.add_dem_server", icon='ADD')
+                row.operator("bgis.edit_dem_server", icon='PREFERENCES')
+                row.operator("bgis.rmv_dem_server", icon='REMOVE')
+                row.operator("bgis.reset_dem_server", icon='PLAY_REVERSE')
 
-		row = box.row()
-		row.label(text="Opentopography Api Key")
-		box.row().prop(self, "opentopography_api_key")
-		row = box.row()
-		row.label(text="EPSG base URL")
-		box.row().prop(self, "epsgioUrl")
-		row = box.row()
-		row.label(text="EPSG API Key")
-		box.row().prop(self, "epsgioKey")
-		row = box.row()
-		row.label(text="MapTiler base URL")
-		box.row().prop(self, "maptilerUrl")
-		#System
-		box = layout.box()
-		box.label(text='System')
-		box.prop(self, "projEngine")
-		box.prop(self, "imgEngine")
-		box.prop(self, "logLevel")
+                row = box.row()
+                row.label(text="Opentopography Api Key")
+                box.row().prop(self, "opentopography_api_key")
+                row = box.row()
+                row.label(text="EPSG base URL")
+                box.row().prop(self, "epsgioUrl")
+                row = box.row()
+                row.label(text="EPSG API Key")
+                box.row().prop(self, "epsgioKey")
+                row = box.row()
+                row.label(text="MapTiler base URL")
+                box.row().prop(self, "maptilerUrl")
+                #System
+                box = layout.box()
+                box.label(text='System')
+                box.prop(self, "projEngine")
+                box.prop(self, "imgEngine")
+                box.prop(self, "logLevel")
+
 
 #######################
 
@@ -905,8 +892,9 @@ class BGIS_OT_edit_overpass_server(Operator):
 
 classes = [
 BGIS_OT_pref_show,
-BGIS_OT_install_gdal,
-BGIS_OT_clear_cache,
+
+BGIS_OT_install_deps,
+
 BGIS_PREFS,
 BGIS_OT_add_predef_crs,
 BGIS_OT_rmv_predef_crs,
