@@ -171,6 +171,16 @@ import bpy.utils.previews as iconsLib
 icons_dict = {}
 
 
+class BGIS_OT_help(bpy.types.Operator):
+	bl_idname = "bgis.help"
+	bl_description = 'Open BlenderGIS documentation'
+	bl_label = "Help"
+
+	def execute(self, context):
+		bpy.ops.wm.url_open(url=bl_info['wiki_url'])
+		return {'FINISHED'}
+
+
 class BGIS_OT_logs(bpy.types.Operator):
 	bl_idname = "bgis.logs"
 	bl_description = 'Display BlenderGIS logs'
@@ -263,6 +273,7 @@ class VIEW3D_MT_menu_gis(bpy.types.Menu):
 	def draw(self, context):
 		layout = self.layout
 		layout.operator("bgis.pref_show", icon='PREFERENCES')
+		layout.operator("bgis.help", icon='HELP', text="Documentation")
 		layout.separator()
 		layout.menu('VIEW3D_MT_menu_gis_webgeodata', icon="URL")
 		layout.menu('VIEW3D_MT_menu_gis_import', icon='IMPORT')
@@ -312,6 +323,7 @@ def register():
 			bpy.utils.unregister_class(menu)
 			bpy.utils.register_class(menu)
 
+	bpy.utils.register_class(BGIS_OT_help)
 	bpy.utils.register_class(BGIS_OT_logs)
 
 	if BASEMAPS:
@@ -382,6 +394,7 @@ def unregister():
 	for menu in menus:
 		bpy.utils.unregister_class(menu)
 
+	bpy.utils.unregister_class(BGIS_OT_help)
 	bpy.utils.unregister_class(BGIS_OT_logs)
 
 	prefs.unregister()
