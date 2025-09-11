@@ -5,6 +5,36 @@ import importlib
 
 log = logging.getLogger(__name__)
 
+
+def ensure_dependency(module_name, package, flag_name, var_name=None):
+        """Ensure a dependency is available."""
+
+        try:
+                module = importlib.import_module(module_name)
+                if var_name:
+                        globals()[var_name] = module
+                globals()[flag_name] = True
+                return True, f"{package} available"
+        except ImportError:
+                cmd = [sys.executable, "-m", "pip", "install", package]
+                proc = subprocess.run(cmd, capture_output=True, text=True)
+                if proc.returncode != 0:
+                        globals()[flag_name] = False
+                        log.error("Installation failed: %s", proc.stderr)
+                        return False, proc.stderr
+                try:
+                        importlib.invalidate_caches()
+                        module = importlib.import_module(module_name)
+                        if var_name:
+                                globals()[var_name] = module
+                        globals()[flag_name] = True
+                        return True, f"{package} installed"
+                except Exception as e:
+                        globals()[flag_name] = False
+                        log.error("Import failed after installation", exc_info=True)
+                        return False, str(e)
+
+
 #GDAL
 gdal = None
 try:
@@ -16,54 +46,6 @@ except Exception:
 else:
         HAS_GDAL = True
         log.debug('GDAL Python binding available')
-
-
-def _gdal_install_hint():
-        if sys.platform.startswith("win"):
-                return "Download GDAL wheel from https://www.lfd.uci.edu/~gohlke/pythonlibs/#gdal and install it manually."
-        if sys.platform == "darwin":
-                return "Install GDAL via Homebrew: brew install gdal"
-        return "Refer to https://gdal.org/download.html#binaries for platform specific instructions"
-
-
-def ensure_gdal():
-        """Ensure GDAL Python bindings are installed."""
-        global HAS_GDAL, gdal
-
-        try:
-                from osgeo import gdal as _gdal
-                gdal = _gdal
-                HAS_GDAL = True
-                return True, "GDAL available"
-        except Exception:
-                HAS_GDAL = False
-
-        try:
-                import pip  # noqa: F401
-        except Exception:
-                try:
-                        import ensurepip
-                        ensurepip.bootstrap()
-                except Exception as e:
-                        log.error("pip not available", exc_info=True)
-                        return False, f"pip not available: {e}"
-
-        cmd = [sys.executable, "-m", "pip", "install", "gdal"]
-        log.info("Installing GDAL via pip")
-        proc = subprocess.run(cmd, capture_output=True, text=True)
-        if proc.returncode != 0:
-                log.error("GDAL installation failed: %s", proc.stderr)
-                return False, _gdal_install_hint()
-
-        try:
-                gdal = importlib.import_module("osgeo.gdal")
-                HAS_GDAL = True
-                log.info("GDAL installed successfully")
-                return True, "GDAL installed"
-        except Exception as e:
-                HAS_GDAL = False
-                log.error("GDAL import failed after installation", exc_info=True)
-                return False, str(e)
 
 
 #PyProj
@@ -93,8 +75,23 @@ try:
 	from .lib import imageio
 	imageio.plugins._freeimage.get_freeimage_lib() #try to download freeimage lib
 except Exception as e:
-	log.error("Cannot install ImageIO's Freeimage plugin", exc_info=True)
-	HAS_IMGIO = False
+        log.error("Cannot install ImageIO's Freeimage plugin", exc_info=True)
+        HAS_IMGIO = False
 else:
-	HAS_IMGIO = True
-	log.debug('ImageIO Freeimage plugin available')
+        HAS_IMGIO = True
+        log.debug('ImageIO Freeimage plugin available')
+
+
+def ensure_dependencies():
+        """Install missing Python dependencies."""
+
+        deps = [
+                ("osgeo.gdal", "gdal", "HAS_GDAL", "gdal"),
+                ("pyproj", "pyproj", "HAS_PYPROJ", None),
+                ("PIL", "Pillow", "HAS_PIL", None),
+        ]
+        results = {}
+        for module, package, flag, var in deps:
+                ok, msg = ensure_dependency(module, package, flag_name=flag, var_name=var)
+                results[package] = (ok, msg)
+        return results

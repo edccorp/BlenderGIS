@@ -83,19 +83,20 @@ class BGIS_OT_pref_show(Operator):
                 return {'FINISHED'}
 
 
-class BGIS_OT_install_gdal(Operator):
+class BGIS_OT_install_deps(Operator):
 
-        bl_idname = "bgis.install_gdal"
-        bl_label = "Install GDAL"
-        bl_description = "Install GDAL Python bindings"
+        bl_idname = "bgis.install_deps"
+        bl_label = "Install missing libraries"
+        bl_description = "Install required Python libraries"
         bl_options = {'INTERNAL'}
 
         def execute(self, context):
-                success, msg = checkdeps.ensure_gdal()
-                if success:
-                        self.report({'INFO'}, "GDAL installation successful")
+                results = checkdeps.ensure_dependencies()
+                failed = [name for name, (ok, _msg) in results.items() if not ok]
+                if failed:
+                        self.report({'ERROR'}, "Failed to install: " + ", ".join(failed))
                 else:
-                        self.report({'ERROR'}, f"GDAL installation failed: {msg}")
+                        self.report({'INFO'}, "All libraries installed")
                 context.area.tag_redraw()
                 return {'FINISHED'}
 
@@ -329,9 +330,10 @@ class BGIS_PREFS(AddonPreferences):
                 box = layout.box()
                 box.label(text='Dependencies')
                 row = box.row()
-                row.operator("bgis.install_gdal", text="Install GDAL")
-                icon = 'CHECKMARK' if checkdeps.HAS_GDAL else 'ERROR'
-                row.label(text=("GDAL installed" if checkdeps.HAS_GDAL else "GDAL missing"), icon=icon)
+                row.operator("bgis.install_deps", text="Install missing libraries")
+                for name, flag in [("GDAL", checkdeps.HAS_GDAL), ("pyproj", checkdeps.HAS_PYPROJ), ("Pillow", checkdeps.HAS_PIL)]:
+                        icon = 'CHECKMARK' if flag else 'ERROR'
+                        box.label(text=(f"{name} installed" if flag else f"{name} missing"), icon=icon)
 
                 #SRS
                 box = layout.box()
@@ -887,7 +889,7 @@ class BGIS_OT_edit_overpass_server(Operator):
 
 classes = [
 BGIS_OT_pref_show,
-BGIS_OT_install_gdal,
+BGIS_OT_install_deps,
 BGIS_PREFS,
 BGIS_OT_add_predef_crs,
 BGIS_OT_rmv_predef_crs,
