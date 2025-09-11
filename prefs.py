@@ -11,8 +11,7 @@ import addon_utils
 from . import bl_info
 from .core.proj.reproj import EPSGIO
 from .core.proj.srs import SRS
-from .core.checkdeps import HAS_GDAL, HAS_PYPROJ, HAS_PIL, HAS_IMGIO
-from .core import settings
+from .core import checkdeps, settings
 
 PKG = __package__
 
@@ -84,6 +83,22 @@ class BGIS_OT_pref_show(Operator):
                 return {'FINISHED'}
 
 
+class BGIS_OT_install_gdal(Operator):
+
+        bl_idname = "bgis.install_gdal"
+        bl_label = "Install GDAL"
+        bl_description = "Install GDAL Python bindings"
+        bl_options = {'INTERNAL'}
+
+        def execute(self, context):
+                success, msg = checkdeps.ensure_gdal()
+                if success:
+                        self.report({'INFO'}, "GDAL installation successful")
+                else:
+                        self.report({'ERROR'}, f"GDAL installation failed: {msg}")
+                context.area.tag_redraw()
+                return {'FINISHED'}
+
 
 class BGIS_PREFS(AddonPreferences):
 
@@ -110,9 +125,9 @@ class BGIS_PREFS(AddonPreferences):
 
         def getProjEngineItems(self, context):
                 items = [ ('AUTO', 'Auto detect', 'Auto select the best library for reprojection tasks') ]
-                if HAS_GDAL:
+                if checkdeps.HAS_GDAL:
                         items.append( ('GDAL', 'GDAL', 'Force GDAL as reprojection engine') )
-                if HAS_PYPROJ:
+                if checkdeps.HAS_PYPROJ:
                         items.append( ('PYPROJ', 'pyProj', 'Force pyProj as reprojection engine') )
                 #if EPSGIO.ping(): #too slow
                 #        items.append( ('EPSGIO', settings.epsgio_url, '') )
@@ -169,11 +184,11 @@ class BGIS_PREFS(AddonPreferences):
 
         def getImgEngineItems(self, context):
                 items = [ ('AUTO', 'Auto detect', 'Auto select the best imaging library') ]
-                if HAS_GDAL:
+                if checkdeps.HAS_GDAL:
                         items.append( ('GDAL', 'GDAL', 'Force GDAL as image processing engine') )
-                if HAS_IMGIO:
+                if checkdeps.HAS_IMGIO:
                         items.append( ('IMGIO', 'ImageIO', 'Force ImageIO as image processing  engine') )
-                if HAS_PIL:
+                if checkdeps.HAS_PIL:
                         items.append( ('PIL', 'PIL', 'Force PIL as image processing  engine') )
                 return items
 
@@ -310,6 +325,13 @@ class BGIS_PREFS(AddonPreferences):
         ################
         def draw(self, context):
                 layout = self.layout
+                #Dependencies
+                box = layout.box()
+                box.label(text='Dependencies')
+                row = box.row()
+                row.operator("bgis.install_gdal", text="Install GDAL")
+                icon = 'CHECKMARK' if checkdeps.HAS_GDAL else 'ERROR'
+                row.label(text=("GDAL installed" if checkdeps.HAS_GDAL else "GDAL missing"), icon=icon)
 
                 #SRS
                 box = layout.box()
@@ -865,6 +887,7 @@ class BGIS_OT_edit_overpass_server(Operator):
 
 classes = [
 BGIS_OT_pref_show,
+BGIS_OT_install_gdal,
 BGIS_PREFS,
 BGIS_OT_add_predef_crs,
 BGIS_OT_rmv_predef_crs,
