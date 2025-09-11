@@ -5,6 +5,7 @@ import logging
 log = logging.getLogger(__name__)
 
 from urllib.request import Request, urlopen
+from concurrent.futures import ThreadPoolExecutor
 from urllib.error import URLError, HTTPError
 
 import bpy
@@ -119,22 +120,44 @@ class IMPORTGIS_OT_dem_query(Operator):
 
 		#we can directly init NpImg from blob but if gdal is not used as image engine then georef will not be extracted
 		#Alternatively, we can save on disk, open with GeoRaster class (will use tyf if gdal not available)
-		rq = Request(url, headers={'User-Agent': USER_AGENT})
-		try:
-			with urlopen(rq, timeout=TIMEOUT) as response, open(filePath, 'wb') as outFile:
-				data = response.read() # a `bytes` object
-				outFile.write(data) #
-		except (URLError, HTTPError) as err:
-			log.error('Http request fails url:{}, code:{}, error:{}'.format(url, getattr(err, 'code', None), err.reason))
-			self.report({'ERROR'}, "Cannot reach OpenTopography web service, check logs for more infos")
-			return {'CANCELLED'}
-		except TimeoutError:
-			log.error('Http request does not respond. url:{}, code:{}, error:{}'.format(url, getattr(err, 'code', None), err.reason))
-			info = "Cannot reach SRTM web service provider, server can be down or overloaded. Please retry later"
-			log.info(info)
-			self.report({'ERROR'}, info)
-			return {'CANCELLED'}
+			rq = Request(url, headers={'User-Agent': USER_AGENT})
+			executor = ThreadPoolExecutor(max_workers=1)
+			wm = context.window_manager
+			wm.progress_begin(0, 100)
+			wm.status_text_set("Downloading elevation data...")
 
+			def _download():
+				with urlopen(rq, timeout=TIMEOUT) as response:
+					return response.read()
+
+			future = executor.submit(_download)
+			while not future.done():
+				wm.progress_update(50)
+				time.sleep(0.1)
+
+			try:
+				data = future.result()
+				with open(filePath, 'wb') as outFile:
+					outFile.write(data)
+			except (URLError, HTTPError) as err:
+				log.error('Http request fails url:{}, code:{}, error:{}'.format(url, getattr(err, 'code', None), err.reason))
+				self.report({'ERROR'}, "Cannot reach OpenTopography web service, check logs for more infos")
+				wm.progress_end()
+				wm.status_text_set(None)
+				executor.shutdown(wait=False)
+				return {'CANCELLED'}
+			except TimeoutError:
+				log.error('Http request does not respond. url:{}, code:{}, error:{}'.format(url, getattr(err, 'code', None), err.reason))
+				info = "Cannot reach SRTM web service provider, server can be down or overloaded. Please retry later"
+				log.info(info)
+				self.report({'ERROR'}, info)
+				wm.progress_end()
+				wm.status_text_set(None)
+				executor.shutdown(wait=False)
+				return {'CANCELLED'}
+		wm.progress_end()
+		wm.status_text_set(None)
+		executor.shutdown(wait=False)
 		if not onMesh:
 			bpy.ops.importgis.georaster(
 			'EXEC_DEFAULT',
