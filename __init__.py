@@ -191,6 +191,7 @@ class BGIS_OT_logs(bpy.types.Operator):
 
 class VIEW3D_MT_menu_gis_import(bpy.types.Menu):
 	bl_label = "Import"
+	bl_description = "Import geospatial data formats"
 	def draw(self, context):
 		if IMPORT_SHP:
 			self.layout.operator("importgis.shapefile_file_dialog", icon_value=icons_dict["shp"].icon_id, text='Shapefile (.shp)')
@@ -203,12 +204,14 @@ class VIEW3D_MT_menu_gis_import(bpy.types.Menu):
 
 class VIEW3D_MT_menu_gis_export(bpy.types.Menu):
 	bl_label = "Export"
+	bl_description = "Export geospatial data formats"
 	def draw(self, context):
 		if EXPORT_SHP:
 			self.layout.operator('exportgis.shapefile', text="Shapefile (.shp)", icon_value=icons_dict["shp"].icon_id)
 
 class VIEW3D_MT_menu_gis_webgeodata(bpy.types.Menu):
 	bl_label = "Web geodata"
+	bl_description = "Access online geospatial data sources"
 	def draw(self, context):
 		if BASEMAPS:
 			self.layout.operator("view3d.map_start", icon_value=icons_dict["layers"].icon_id)
@@ -219,6 +222,7 @@ class VIEW3D_MT_menu_gis_webgeodata(bpy.types.Menu):
 
 class VIEW3D_MT_menu_gis_camera(bpy.types.Menu):
 	bl_label = "Camera"
+	bl_description = "Camera georeferencing tools"
 	def draw(self, context):
 		if CAM_GEOREF:
 			self.layout.operator("camera.georender", icon_value=icons_dict["georefCam"].icon_id, text='Georender')
@@ -228,6 +232,7 @@ class VIEW3D_MT_menu_gis_camera(bpy.types.Menu):
 
 class VIEW3D_MT_menu_gis_mesh(bpy.types.Menu):
 	bl_label = "Mesh"
+	bl_description = "Geospatial mesh utilities"
 	def draw(self, context):
 		if DELAUNAY:
 			self.layout.operator("tesselation.delaunay", icon_value=icons_dict["delaunay"].icon_id, text='Delaunay')
@@ -239,19 +244,22 @@ class VIEW3D_MT_menu_gis_mesh(bpy.types.Menu):
 
 class VIEW3D_MT_menu_gis_object(bpy.types.Menu):
 	bl_label = "Object"
+	bl_description = "Geospatial object utilities"
 	def draw(self, context):
 		if DROP:
 			self.layout.operator("object.drop", icon_value=icons_dict["drop"].icon_id, text='Drop')
 
 class VIEW3D_MT_menu_gis_nodes(bpy.types.Menu):
 	bl_label = "Nodes"
+	bl_description = "Node-based terrain analysis"
 	def draw(self, context):
 		if TERRAIN_NODES:
 			self.layout.operator("analysis.nodes", icon_value=icons_dict["terrain"].icon_id, text='Terrain analysis')
 
 class VIEW3D_MT_menu_gis(bpy.types.Menu):
 	bl_label = "GIS"
-	# Set the menu operators and draw functions
+	bl_description = "Main BlenderGIS tools and settings"
+# Set the menu operators and draw functions
 	def draw(self, context):
 		layout = self.layout
 		layout.operator("bgis.pref_show", icon='PREFERENCES')
