@@ -31,6 +31,7 @@ from urllib.request import (
 from urllib.error import URLError, HTTPError
 import ssl
 import json
+from concurrent.futures import ThreadPoolExecutor
 
 from ..errors import ReprojError
 from .. import settings
@@ -39,6 +40,9 @@ USER_AGENT = settings.user_agent
 
 DEFAULT_TIMEOUT = 2
 REPROJ_TIMEOUT = 60
+
+# Thread pool used to run web requests asynchronously
+EXECUTOR = ThreadPoolExecutor(max_workers=4)
 
 ######################################
 # MapTiler coordinate service
@@ -123,6 +127,28 @@ class EPSGIO():
                                 x, y = pt[:2]
                         return (float(x), float(y))
                 raise ReprojError('Unexpected response from MapTiler: {}'.format(obj))
+
+        # --------- Async wrappers ---------
+
+        @staticmethod
+        def ping_async():
+                return EXECUTOR.submit(EPSGIO.ping)
+
+        @staticmethod
+        def reprojPt_async(epsg1, epsg2, x1, y1):
+                return EXECUTOR.submit(EPSGIO.reprojPt, epsg1, epsg2, x1, y1)
+
+        @staticmethod
+        def reprojPts_async(epsg1, epsg2, points):
+                return EXECUTOR.submit(EPSGIO.reprojPts, epsg1, epsg2, points)
+
+        @staticmethod
+        def search_async(query):
+                return EXECUTOR.submit(EPSGIO.search, query)
+
+        @staticmethod
+        def getEsriWkt_async(epsg):
+                return EXECUTOR.submit(EPSGIO.getEsriWkt, epsg)
 
         @staticmethod
         def reprojPts(epsg1, epsg2, points):
