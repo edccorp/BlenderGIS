@@ -41,7 +41,7 @@ DEFAULT_TIMEOUT = 2
 REPROJ_TIMEOUT = 60
 
 ######################################
-# EPSG web service
+# MapTiler coordinate service
 
 
 class EPSGIO():
@@ -49,18 +49,22 @@ class EPSGIO():
 
         @staticmethod
         def _open(url, timeout):
-                key = getattr(settings, 'epsgio_key', '')
+                key = getattr(settings, 'maptiler_key', '') or getattr(settings, 'epsgio_key', '')
                 if key:
                         url += ('&' if '?' in url else '?') + 'key=' + key
                 rq = Request(url, headers={'User-Agent': USER_AGENT})
                 context = ssl.create_default_context()
                 opener = build_opener(HTTPSHandler(context=context), HTTPRedirectHandler())
-                return opener.open(rq, timeout=timeout)
+                try:
+                        return opener.open(rq, timeout=timeout)
+                except ssl.SSLError as err:
+                        log.error('Https error for url %s: %s', url, err)
+                        raise
 
         @staticmethod
         def ping():
 
-                url = settings.epsgio_url
+                url = settings.maptiler_url
 
                 try:
                         EPSGIO._open(url, DEFAULT_TIMEOUT)
@@ -84,15 +88,8 @@ class EPSGIO():
         @lru_cache(maxsize=1024)
         def reprojPt(epsg1, epsg2, x1, y1):
 
-                base = settings.epsgio_url.rstrip('/')
-                url = base + "/trans?x={X}&y={Y}&z={Z}&s_srs={CRS1}&t_srs={CRS2}"
-
-
-                url = url.replace("{X}", str(x1))
-                url = url.replace("{Y}", str(y1))
-                url = url.replace("{Z}", '0')
-                url = url.replace("{CRS1}", str(epsg1))
-                url = url.replace("{CRS2}", str(epsg2))
+                base = settings.maptiler_url.rstrip('/')
+                url = f"{base}/coordinates/transform/{epsg1}/{epsg2}.json?points={x1},{y1}"
 
                 log.debug(url)
 
@@ -100,7 +97,7 @@ class EPSGIO():
                         response = EPSGIO._open(url, REPROJ_TIMEOUT).read().decode('utf8')
                 except HTTPError as err:
                         if err.code in (401, 403):
-                                raise ReprojError('{} access denied: {} {}'.format(settings.epsgio_url, err.code, err.reason))
+                                raise ReprojError('{} access denied: {} {}'.format(settings.maptiler_url, err.code, err.reason))
                         log.error('Http request fails url:{}, code:{}, error:{}'.format(url, err.code, err.reason))
                         raise
                 except URLError as err:
@@ -116,14 +113,16 @@ class EPSGIO():
 
                 obj = json.loads(response)
 
-                if isinstance(obj, dict):
-                        if 'x' in obj and 'y' in obj:
-                                return (float(obj['x']), float(obj['y']))
-                        results = obj.get('results') or obj.get('points')
-                        if results:
-                                res = results[0]
-                                return (float(res['x']), float(res['y']))
-                raise ReprojError('Unexpected response from epsg.io: {}'.format(obj))
+                pts = obj.get('points') or obj.get('coordinates') or []
+                if pts:
+                        pt = pts[0]
+                        if isinstance(pt, dict):
+                                x = pt.get('x') or pt.get('lon') or pt.get('lng')
+                                y = pt.get('y') or pt.get('lat')
+                        else:
+                                x, y = pt[:2]
+                        return (float(x), float(y))
+                raise ReprojError('Unexpected response from MapTiler: {}'.format(obj))
 
         @staticmethod
         def reprojPts(epsg1, epsg2, points):
@@ -139,11 +138,11 @@ class EPSGIO():
                         x, y = points[0]
                         return [EPSGIO.reprojPt(epsg1, epsg2, x, y)]
 
-                base = settings.epsgio_url.rstrip('/')
-                urlTemplate = base + "/trans?data={POINTS}&s_srs={CRS1}&t_srs={CRS2}"
 
-                urlTemplate = urlTemplate.replace("{CRS1}", str(epsg1))
-                urlTemplate = urlTemplate.replace("{CRS2}", str(epsg2))
+
+                base = settings.maptiler_url.rstrip('/')
+                urlTemplate = f"{base}/coordinates/transform/{epsg1}/{epsg2}.json?points={{POINTS}}"
+
 
                 precision = 4
                 data = [','.join([str(round(v, precision)) for v in p]) for p in points]
@@ -168,7 +167,7 @@ class EPSGIO():
                                 response = EPSGIO._open(url, REPROJ_TIMEOUT).read().decode('utf8')
                         except HTTPError as err:
                                 if err.code in (401, 403):
-                                        raise ReprojError('{} access denied: {} {}'.format(settings.epsgio_url, err.code, err.reason))
+                                        raise ReprojError('{} access denied: {} {}'.format(settings.maptiler_url, err.code, err.reason))
                                 log.error('Http request fails url:{}, code:{}, error:{}'.format(url, err.code, err.reason))
                                 raise
                         except URLError as err:
@@ -183,11 +182,14 @@ class EPSGIO():
                                 raise
 
                         obj = json.loads(response)
-                        if isinstance(obj, dict):
-                                data = obj.get('results') or obj.get('points') or []
-                        else:
-                                data = obj
-                        result.extend([(float(p['x']), float(p['y'])) for p in data])
+                        pts = obj.get('points') or obj.get('coordinates') or []
+                        for p in pts:
+                                if isinstance(p, dict):
+                                        x = p.get('x') or p.get('lon') or p.get('lng')
+                                        y = p.get('y') or p.get('lat')
+                                else:
+                                        x, y = p[:2]
+                                result.append((float(x), float(y)))
 
                 return result
 
@@ -196,10 +198,8 @@ class EPSGIO():
         def search(query):
                 query = str(query).replace(' ', '+')
 
-                base = settings.epsgio_url.rstrip('/')
-                url = base + "/?q={QUERY}&format=json"
-
-                url = url.replace("{QUERY}", query)
+                base = settings.maptiler_url.rstrip('/')
+                url = f"{base}/coordinates/search.json?query={query}"
                 log.debug('Search crs : {}'.format(url))
                 try:
                         response = EPSGIO._open(url, DEFAULT_TIMEOUT).read().decode('utf8')
@@ -217,20 +217,19 @@ class EPSGIO():
                         log.error('Http request fails url:{}, SSL error:{}'.format(url, err))
                         raise
                 obj = json.loads(response)
-                log.debug('Search results : {}'.format([ (r['code'], r['name']) for r in obj.get('results', []) ]))
-                return obj.get('results', [])
+                results = obj.get('results') or obj.get('crs', [])
+                log.debug('Search results : {}'.format([(r.get('code'), r.get('name')) for r in results]))
+                return results
 
         @staticmethod
         @lru_cache(maxsize=256)
         def getEsriWkt(epsg):
 
-                base = settings.epsgio_url.rstrip('/')
-                url = base + "/{CODE}.esriwkt"
-
-                url = url.replace("{CODE}", str(epsg))
+                base = settings.maptiler_url.rstrip('/')
+                url = f"{base}/coordinates/{epsg}.json"
                 log.debug(url)
                 try:
-                        wkt = EPSGIO._open(url, DEFAULT_TIMEOUT).read().decode('utf8')
+                        response = EPSGIO._open(url, DEFAULT_TIMEOUT).read().decode('utf8')
                 except HTTPError as err:
                         log.error('Http request fails url:{}, code:{}, error:{}'.format(url, err.code, err.reason))
                         raise
@@ -244,6 +243,9 @@ class EPSGIO():
                 except ssl.SSLError as err:
                         log.error('Http request fails url:{}, SSL error:{}'.format(url, err))
                         raise
+
+                obj = json.loads(response)
+                wkt = obj.get('esriwkt') or obj.get('wkt') or ''
                 return wkt
 
         @staticmethod
