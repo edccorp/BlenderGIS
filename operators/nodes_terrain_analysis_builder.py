@@ -11,6 +11,27 @@ from .utils import getBBOX
 from ..core.maths.interpo import scale
 
 
+def _clear_group_sockets(node_tree):
+	"""Clear group inputs/outputs for both legacy and Blender 4+ APIs."""
+	if hasattr(node_tree, "interface"):
+		for item in list(node_tree.interface.items_tree):
+			if item.item_type == 'SOCKET':
+				node_tree.interface.remove(item)
+	else:
+		node_tree.inputs.clear()
+		node_tree.outputs.clear()
+
+
+def _new_group_socket(node_tree, in_out, socket_type, name):
+	"""Create a group socket across Blender versions."""
+	if hasattr(node_tree, "interface"):
+		return node_tree.interface.new_socket(name=name, in_out=in_out, socket_type=socket_type)
+	elif in_out == 'INPUT':
+		return node_tree.inputs.new(socket_type, name)
+	else:
+		return node_tree.outputs.new(socket_type, name)
+
+
 class TERRAIN_ANALYSIS_OT_build_nodes(Operator):
 	'''Create material node thee to analysis height, slope and aspect'''
 	bl_idname = "analysis.nodes"
@@ -60,21 +81,20 @@ class TERRAIN_ANALYSIS_OT_build_nodes(Operator):
 		   #groupsTree.remove(groupsTree['Normalize'])
 			scaleNodesGroupTree = groupsTree['Normalize']
 			scaleNodesGroupTree.nodes.clear()
-			scaleNodesGroupTree.inputs.clear()
-			scaleNodesGroupTree.outputs.clear()
+			_clear_group_sockets(scaleNodesGroupTree)
 		else:
 			scaleNodesGroupTree = groupsTree.new('Normalize', 'ShaderNodeTree') # = bpy.types.node_tree
 		scaleNodesGroupName = scaleNodesGroupTree.name #Normalize.001 if normalize already exists
 		#  group inputs
 		scaleInputsNode = scaleNodesGroupTree.nodes.new('NodeGroupInput')
 		scaleInputsNode.location = (-350,0)
-		scaleNodesGroupTree.inputs.new('NodeSocketFloat','val')
-		scaleNodesGroupTree.inputs.new('NodeSocketFloat','min')
-		scaleNodesGroupTree.inputs.new('NodeSocketFloat','max')
+		_new_group_socket(scaleNodesGroupTree, 'INPUT', 'NodeSocketFloat', 'val')
+		_new_group_socket(scaleNodesGroupTree, 'INPUT', 'NodeSocketFloat', 'min')
+		_new_group_socket(scaleNodesGroupTree, 'INPUT', 'NodeSocketFloat', 'max')
 		#  group outputs
 		scaleOutputsNode = scaleNodesGroupTree.nodes.new('NodeGroupOutput')
 		scaleOutputsNode.location = (300,0)
-		scaleNodesGroupTree.outputs.new('NodeSocketFloat','val')
+		_new_group_socket(scaleNodesGroupTree, 'OUTPUT', 'NodeSocketFloat', 'val')
 		#  create 3 math nodes in a group
 		subtractNode1 = scaleNodesGroupTree.nodes.new('ShaderNodeMath')
 		subtractNode1.operation = 'SUBTRACT'
