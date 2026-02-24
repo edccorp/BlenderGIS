@@ -74,7 +74,7 @@ class BaseMap(GeoScene):
 
 		#Get cache destination folder in addon preferences
 		prefs = context.preferences.addons[PKG].preferences
-		cacheFolder = prefs.cacheFolder
+		cacheFolder = bpy.path.abspath(prefs.cacheFolder)
 
 		self.synchOrj = prefs.synchOrj
 
@@ -488,7 +488,7 @@ class VIEW3D_OT_map_start(Operator):
 		prefs = context.preferences.addons[PKG].preferences
 
 		#check cache folder
-		folder = prefs.cacheFolder
+		folder = bpy.path.abspath(prefs.cacheFolder)
 		if folder == "" or not os.path.exists(folder):
 			self.report({'ERROR'}, "Please define a valid cache folder path in addon's preferences")
 			return {'CANCELLED'}
