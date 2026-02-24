@@ -92,8 +92,13 @@ logger.setLevel(logging.DEBUG)
 logger.info('###### Starting new Blender session : {}'.format(datetime.now().strftime('%Y-%m-%d %H:%M:%S')))
 
 def _excepthook(exc_type, exc_value, exc_traceback):
-	if 'BlenderGIS' in exc_traceback.tb_frame.f_code.co_filename:
-		logger.error("Uncaught exception", exc_info=(exc_type, exc_value, exc_traceback))
+	tb = exc_traceback
+	while tb is not None:
+		filename = tb.tb_frame.f_code.co_filename
+		if 'BlenderGIS' in filename:
+			logger.error("Uncaught exception", exc_info=(exc_type, exc_value, exc_traceback))
+			break
+		tb = tb.tb_next
 	sys.__excepthook__(exc_type, exc_value, exc_traceback)
 
 sys.excepthook = _excepthook #warn, this is a global variable, can be overrided by another addon
